@@ -1,1 +1,0 @@
-# water-meters-app
