@@ -1,0 +1,55 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Generate Android icons
+        run: npx @capacitor/assets generate --android
+
+      - name: Copy web assets
+        run: npx cap copy android
+
+      - name: Grant location and camera permissions
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/src/main/AndroidManifest.xml')
+          s = p.read_text()
+          marker = '<manifest '
+          insert = ('\n    <uses-permission android:name="android.permission.CAMERA" />'
+                    '\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />'
+                    '\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />')
+          if 'android.permission.CAMERA' not in s:
+              s = s.replace(marker, marker + insert, 1)
+          p.write_text(s)
+          PY
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ADE-Meter-Reading-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
