@@ -6,6 +6,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -14,7 +15,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Install dependencies
         run: npm install
@@ -33,14 +33,19 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path('android/app/src/main/AndroidManifest.xml')
+
+          p = Path("android/app/src/main/AndroidManifest.xml")
           s = p.read_text()
-          marker = '<manifest '
-          insert = ('\n    <uses-permission android:name="android.permission.CAMERA" />'
-                    '\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />'
-                    '\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />')
-          if 'android.permission.CAMERA' not in s:
-              s = s.replace(marker, marker + insert, 1)
+
+          permissions = """
+              <uses-permission android:name="android.permission.CAMERA" />
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+          """
+
+          if "android.permission.CAMERA" not in s:
+              s = s.replace("<manifest ", "<manifest " + permissions, 1)
+
           p.write_text(s)
           PY
 
