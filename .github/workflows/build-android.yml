@@ -56,7 +56,10 @@ jobs:
           """
 
           if "android.permission.CAMERA" not in s:
-              s = s.replace("<manifest ", "<manifest " + permissions, 1)
+              first_close = s.find(">")
+              if first_close == -1:
+                  raise RuntimeError("Invalid AndroidManifest.xml")
+              s = s[:first_close + 1] + permissions + s[first_close + 1:]
 
           p.write_text(s)
           PY
