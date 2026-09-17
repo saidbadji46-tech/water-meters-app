@@ -63,19 +63,23 @@ jobs:
           """
 
           if "android.permission.CAMERA" not in s:
-              s = s.replace("<application", permissions + "\n    <application", 1)
+              s = s.replace(
+                  "<application",
+                  permissions + "\n    <application",
+                  1
+              )
 
           p.write_text(s)
           PY
 
-      - name: Build Debug APK
+      - name: Build Release APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease
 
-      - name: Upload APK
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: ADE-Meter-Reading-SQLite-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: ADE-Meter-Reading-SQLite-release
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
