@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK with SQLite
 
 on:
   workflow_dispatch:
@@ -17,10 +17,10 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Setup Node
+      - name: Setup Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '22'
 
       - name: Install dependencies
         run: npm install
@@ -28,57 +28,54 @@ jobs:
       - name: Prepare web files
         run: |
           mkdir -p www/vendor
-
           cp index.html www/
           cp manifest.json www/
           cp sw.js www/
           cp icon-192x192.png www/
           cp icon-512x512.png www/
-
           cp jszip.min.js www/vendor/jszip.min.js
+          cp sqlite-bridge.js www/
 
-      - name: Add Android platform
+      - name: Add Android
         run: npx cap add android
 
-      - name: Generate Android icons
+      - name: Generate Android assets
         run: npx @capacitor/assets generate --android
 
-      - name: Copy web assets
+      - name: Copy web files
         run: npx cap copy android
 
-      - name: Grant location and camera permissions
-        shell: bash
+      - name: Sync Capacitor plugins
+        run: npx cap sync android
+
+      - name: Add camera and location permissions
         run: |
-          python - <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
 
           p = Path("android/app/src/main/AndroidManifest.xml")
           s = p.read_text()
 
-          permissions = """    <uses-permission android:name="android.permission.CAMERA" />
+          permissions = """
+              <uses-permission android:name="android.permission.CAMERA" />
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
           """
 
           if "android.permission.CAMERA" not in s:
-              if "<application" in s:
-                  s = s.replace(
-                      "    <application",
-                      permissions + "\n    <application",
-                      1
-                  )
-              else:
-                  raise RuntimeError("Could not find <application> in AndroidManifest.xml")
+              s = s.replace("<application", permissions + "\n    <application", 1)
 
           p.write_text(s)
           PY
 
-      - name: Build debug APK
-        working-directory: android
-        run: ./gradlew assembleDebug
+      - name: Build Debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ADE-Meter-Reading-debug
+          name: ADE-Meter-Reading-SQLite-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
