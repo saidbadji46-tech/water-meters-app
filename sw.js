@@ -1,6 +1,7 @@
-const CACHE_NAME = 'meter-reading-v41-pro';
+const CACHE_NAME = 'meter-reading-v42-native-sqlite';
 const APP_SHELL = [
   './', './index.html', './manifest.json', './icon-192x192.png', './icon-512x512.png',
+  './sqlite-bridge.js',
   './vendor/jszip.min.js',
   './vendor/xlsx.full.min.js', './vendor/tesseract.min.js',
   './vendor/leaflet.min.js', './vendor/leaflet.min.css',

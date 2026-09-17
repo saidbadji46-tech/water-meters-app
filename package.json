@@ -1,6 +1,6 @@
 {
   "name": "meter-reading-ade-android",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "ADE Meter Reading - Android app wrapper",
   "scripts": {
@@ -10,11 +10,12 @@
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",
-    "@capacitor/core": "8.5.2"
+    "@capacitor/core": "8.5.2",
+    "@capacitor-community/sqlite": "8.1.1"
   },
   "devDependencies": {
     "@capacitor/assets": "3.0.5",
     "@capacitor/cli": "8.5.2",
-    "typescript": "^5.8.3"
+    "esbuild": "^0.25.0"
   }
 }

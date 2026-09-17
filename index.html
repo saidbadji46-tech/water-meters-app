@@ -20,6 +20,7 @@
      it's used instantly with zero further code changes and zero internet needed. -->
 <script src="vendor/xlsx.full.min.js" onerror="this.onerror=null;var s=document.createElement('script');s.async=false;s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';document.head.appendChild(s);"></script>
 <script src="vendor/jszip.min.js"></script>
+<script src="sqlite-bridge.js"></script>
 <script src="vendor/tesseract.min.js" onerror="this.onerror=null;var s=document.createElement('script');s.async=false;s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';document.head.appendChild(s);"></script>
 <style>
 :root{
@@ -956,7 +957,11 @@ let pinSetupStep = 0;
 let roundArchives = [];
 let currentRoundCreatedAt = null;
 
-/* ====== STORAGE (self-contained IndexedDB — works in any browser, no external platform needed) ====== */
+/* ====== STORAGE ======
+   Android APK: native SQLite inside the app sandbox.
+   Browser: IndexedDB fallback so the web version keeps working.
+   On first APK launch, existing IndexedDB data is migrated to SQLite.
+*/
 const IDB_NAME = 'meterReadingAppDB';
 const IDB_STORE = 'kv';
 let idbPromise = null;
@@ -965,14 +970,15 @@ function openIDB(){
   idbPromise = new Promise((resolve, reject)=>{
     try{
       const req = indexedDB.open(IDB_NAME, 1);
-      req.onupgradeneeded = ()=>{ req.result.createObjectStore(IDB_STORE); };
+      req.onupgradeneeded = ()=>{ if(!req.result.objectStoreNames.contains(IDB_STORE)) req.result.createObjectStore(IDB_STORE); };
       req.onsuccess = ()=> resolve(req.result);
       req.onerror = ()=> reject(req.error);
     }catch(e){ reject(e); }
   });
   return idbPromise;
 }
-function idbGetRaw(key){
+async function idbGetRaw(key){
+  if(window.__nativeSQLite?.isNative()) return await window.__nativeSQLite.get(key);
   return openIDB().then(db=> new Promise((resolve,reject)=>{
     const tx = db.transaction(IDB_STORE, 'readonly');
     const req = tx.objectStore(IDB_STORE).get(key);
@@ -980,7 +986,8 @@ function idbGetRaw(key){
     req.onerror = ()=> reject(req.error);
   }));
 }
-function idbSetRaw(key, value){
+async function idbSetRaw(key, value){
+  if(window.__nativeSQLite?.isNative()) return await window.__nativeSQLite.set(key, value);
   return openIDB().then(db=> new Promise((resolve,reject)=>{
     const tx = db.transaction(IDB_STORE, 'readwrite');
     tx.objectStore(IDB_STORE).put(value, key);
@@ -988,7 +995,8 @@ function idbSetRaw(key, value){
     tx.onerror = ()=> reject(tx.error);
   }));
 }
-function idbDeleteRaw(key){
+async function idbDeleteRaw(key){
+  if(window.__nativeSQLite?.isNative()){ await window.__nativeSQLite.delete(key); return true; }
   return openIDB().then(db=> new Promise((resolve,reject)=>{
     const tx = db.transaction(IDB_STORE, 'readwrite');
     tx.objectStore(IDB_STORE).delete(key);
@@ -996,10 +1004,10 @@ function idbDeleteRaw(key){
     tx.onerror = ()=> reject(tx.error);
   }));
 }
-async function sg(k){ try{ return await idbGetRaw(k); }catch(e){ return null; } }
-async function ss(k,v){ try{ await idbSetRaw(k,v); }catch(e){} }
-async function safeSet(k,v){ try{ await idbSetRaw(k,v); return true; }catch(e){ return false; } }
-async function safeDelete(k){ try{ await idbDeleteRaw(k); }catch(e){} }
+async function sg(k){ try{ if(window.__nativeSQLite?.ready) await window.__nativeSQLite.ready(); return await idbGetRaw(k); }catch(e){ return null; } }
+async function ss(k,v){ try{ if(window.__nativeSQLite?.ready) await window.__nativeSQLite.ready(); await idbSetRaw(k,v); }catch(e){} }
+async function safeSet(k,v){ try{ if(window.__nativeSQLite?.ready) await window.__nativeSQLite.ready(); await idbSetRaw(k,v); return true; }catch(e){ return false; } }
+async function safeDelete(k){ try{ if(window.__nativeSQLite?.ready) await window.__nativeSQLite.ready(); await idbDeleteRaw(k); }catch(e){} }
 
 async function loadData(){
   const m = await sg('meters'); meters = m ? JSON.parse(m) : [];
