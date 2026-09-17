@@ -1,12 +1,13 @@
 {
-  "name": "meter-reading-ade-android",
-  "version": "1.1.0",
+  "name": "meter-reading-ade-android-sqlite",
+  "version": "1.0.0",
   "private": true,
-  "description": "ADE Meter Reading - Android app wrapper",
+  "description": "ADE Meter Reading Android app with SQLite",
   "scripts": {
     "cap:add:android": "cap add android",
     "cap:copy": "cap copy android",
-    "build:android": "cap copy android && cd android && ./gradlew assembleDebug"
+    "cap:sync": "cap sync android",
+    "build:android": "cap sync android && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",
@@ -16,6 +17,6 @@
   "devDependencies": {
     "@capacitor/assets": "3.0.5",
     "@capacitor/cli": "8.5.2",
-    "esbuild": "^0.25.0"
+    "typescript": "^5.8.3"
   }
 }
