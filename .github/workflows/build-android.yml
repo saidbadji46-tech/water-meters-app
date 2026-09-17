@@ -49,17 +49,20 @@ jobs:
           p = Path("android/app/src/main/AndroidManifest.xml")
           s = p.read_text()
 
-          permissions = """
-              <uses-permission android:name="android.permission.CAMERA" />
+          permissions = """    <uses-permission android:name="android.permission.CAMERA" />
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
           """
 
           if "android.permission.CAMERA" not in s:
-              first_close = s.find(">")
-              if first_close == -1:
-                  raise RuntimeError("Invalid AndroidManifest.xml")
-              s = s[:first_close + 1] + permissions + s[first_close + 1:]
+              if "<application" in s:
+                  s = s.replace(
+                      "    <application",
+                      permissions + "\n    <application",
+                      1
+                  )
+              else:
+                  raise RuntimeError("Could not find <application> in AndroidManifest.xml")
 
           p.write_text(s)
           PY
