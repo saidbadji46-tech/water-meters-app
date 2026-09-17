@@ -19,6 +19,18 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Prepare web files
+        run: |
+          mkdir -p www/vendor
+
+          cp index.html www/
+          cp manifest.json www/
+          cp sw.js www/
+          cp icon-192x192.png www/
+          cp icon-512x512.png www/
+
+          cp jszip.min.js www/vendor/jszip.min.js
+
       - name: Add Android platform
         run: npx cap add android
 
