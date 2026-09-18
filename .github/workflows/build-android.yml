@@ -32,3 +32,72 @@ jobs:
           cp manifest.json www/
           cp sw.js www/
           cp icon-192x192.png www/
+          cp icon-512x512.png www/
+          cp jszip.min.js www/vendor/jszip.min.js
+          cp sqlite-bridge.js www/
+
+      - name: Add Android
+        run: npx cap add android
+
+      - name: Generate Android assets
+        run: npx @capacitor/assets generate --android
+
+      - name: Copy web files
+        run: npx cap copy android
+
+      - name: Sync Capacitor plugins
+        run: npx cap sync android
+
+      - name: Add camera and location permissions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+
+          permissions = """
+              <uses-permission android:name="android.permission.CAMERA" />
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+          """
+
+          if "android.permission.CAMERA" not in s:
+              s = s.replace(
+                  "<application",
+                  permissions + "\n    <application",
+                  1
+              )
+
+          p.write_text(s)
+          PY
+
+      - name: Decode signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release-key.jks"
+
+      - name: Build signed Release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
+        run: |
+          cd android
+          chmod +x gradlew
+
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/release-key.jks" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEYSTORE_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEYSTORE_PASSWORD"
+
+      - name: Find signed APK
+        run: |
+          ls -lh android/app/build/outputs/apk/release/
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ADE-Meter-Reading-Signed-Release
+          path: android/app/build/outputs/apk/release/*.apk
