@@ -8,52 +8,238 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
+      # --------------------------------------------------
+      # 1. تحميل المشروع
+      # --------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
+
+      # --------------------------------------------------
+      # 2. Java 21
+      # --------------------------------------------------
       - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
+
+      # --------------------------------------------------
+      # 3. Node 22
+      # --------------------------------------------------
       - name: Setup Node 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
+
+      # --------------------------------------------------
+      # 4. تثبيت المكتبات
+      # --------------------------------------------------
       - name: Install dependencies
         run: npm install
 
+
+      # --------------------------------------------------
+      # 5. تجهيز ملفات الويب
+      # --------------------------------------------------
       - name: Prepare web files
         run: |
           mkdir -p www/vendor
+
           cp index.html www/
           cp manifest.json www/
           cp sw.js www/
           cp icon-192x192.png www/
           cp icon-512x512.png www/
           cp jszip.min.js www/vendor/jszip.min.js
-          cp sqlite-bridge.js www/
 
-      - name: Add Android
-        run: npx cap add android
+          if [ -f sqlite-bridge.js ]; then
+            cp sqlite-bridge.js www/
+          fi
 
+
+      # --------------------------------------------------
+      # 6. حفظ AndroidPublicFilePlugin قبل إنشاء Android
+      # --------------------------------------------------
+      - name: Prepare AndroidPublicFile plugin
+        run: |
+          mkdir -p /tmp/ade-plugin
+
+          if [ -f android/app/src/main/java/com/saidbadji/meterreading/AndroidPublicFilePlugin.java ]; then
+            cp android/app/src/main/java/com/saidbadji/meterreading/AndroidPublicFilePlugin.java \
+              /tmp/ade-plugin/AndroidPublicFilePlugin.java
+          else
+            echo "ERROR: AndroidPublicFilePlugin.java not found"
+            exit 1
+          fi
+
+
+      # --------------------------------------------------
+      # 7. حذف Android الجزئي وإعادة إنشائه
+      # --------------------------------------------------
+      - name: Recreate Android project
+        run: |
+          rm -rf android
+          npx cap add android
+
+
+      # --------------------------------------------------
+      # 8. تركيب AndroidPublicFilePlugin
+      # --------------------------------------------------
+      - name: Install AndroidPublicFile plugin
+        run: |
+          mkdir -p android/app/src/main/java/com/saidbadji/meterreading
+
+          cp /tmp/ade-plugin/AndroidPublicFilePlugin.java \
+            android/app/src/main/java/com/saidbadji/meterreading/AndroidPublicFilePlugin.java
+
+
+      # --------------------------------------------------
+      # 9. تسجيل Plugin داخل MainActivity
+      # --------------------------------------------------
+      - name: Register AndroidPublicFile plugin
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          base = Path("android/app/src/main/java")
+
+          files = list(base.rglob("MainActivity.java"))
+
+          if not files:
+              raise SystemExit("ERROR: MainActivity.java not found")
+
+          main = files[0]
+
+          print("MainActivity:", main)
+
+          s = main.read_text()
+
+          # إضافة import
+          plugin_import = "import com.saidbadji.meterreading.AndroidPublicFilePlugin;"
+
+          if plugin_import not in s:
+              package_match = re.search(
+                  r'^\s*package\s+[^;]+;',
+                  s,
+                  re.MULTILINE
+              )
+
+              if package_match:
+                  pos = package_match.end()
+                  s = s[:pos] + "\n\n" + plugin_import + s[pos:]
+              else:
+                  s = plugin_import + "\n" + s
+
+          # إذا كانت MainActivity تحتوي BridgeActivity
+          # نضيف registerPlugin قبل super.onCreate
+          if "registerPlugin(AndroidPublicFilePlugin.class);" not in s:
+
+              if "onCreate(Bundle savedInstanceState)" in s:
+
+                  target = "super.onCreate(savedInstanceState);"
+
+                  if target in s:
+                      s = s.replace(
+                          target,
+                          "registerPlugin(AndroidPublicFilePlugin.class);\n        "
+                          + target,
+                          1
+                      )
+                  else:
+                      # إنشاء onCreate إذا لم يكن موجودًا بشكل طبيعي
+                      s = s.replace(
+                          "{",
+                          "{\n        registerPlugin(AndroidPublicFilePlugin.class);",
+                          1
+                      )
+
+              else:
+                  # إضافة onCreate داخل الكلاس
+                  class_match = re.search(
+                      r'public\s+class\s+MainActivity\s+extends\s+BridgeActivity\s*\{',
+                      s
+                  )
+
+                  if not class_match:
+                      raise SystemExit(
+                          "ERROR: Could not identify MainActivity class"
+                      )
+
+                  insert = """
+          
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  registerPlugin(AndroidPublicFilePlugin.class);
+                  super.onCreate(savedInstanceState);
+              }
+          """
+
+                  pos = class_match.end()
+                  s = s[:pos] + insert + s[pos:]
+
+          # التأكد من import Bundle
+          if "import android.os.Bundle;" not in s:
+              package_match = re.search(
+                  r'^\s*package\s+[^;]+;',
+                  s,
+                  re.MULTILINE
+              )
+
+              if package_match:
+                  pos = package_match.end()
+                  s = (
+                      s[:pos]
+                      + "\n\nimport android.os.Bundle;"
+                      + s[pos:]
+                  )
+              else:
+                  s = "import android.os.Bundle;\n" + s
+
+          main.write_text(s)
+
+          print("MainActivity patched successfully.")
+          PY
+
+
+      # --------------------------------------------------
+      # 10. توليد Android assets
+      # --------------------------------------------------
       - name: Generate Android assets
-        run: npx @capacitor/assets generate --android
+        run: |
+          npx @capacitor/assets generate --android
 
+
+      # --------------------------------------------------
+      # 11. نسخ ملفات الويب
+      # --------------------------------------------------
       - name: Copy web files
-        run: npx cap copy android
+        run: |
+          npx cap copy android
 
+
+      # --------------------------------------------------
+      # 12. مزامنة Capacitor
+      # --------------------------------------------------
       - name: Sync Capacitor plugins
-        run: npx cap sync android
+        run: |
+          npx cap sync android
 
+
+      # --------------------------------------------------
+      # 13. صلاحيات الكاميرا والموقع
+      # --------------------------------------------------
       - name: Add camera and location permissions
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
           p = Path("android/app/src/main/AndroidManifest.xml")
+
           s = p.read_text()
 
           permissions = """
@@ -70,20 +256,59 @@ jobs:
               )
 
           p.write_text(s)
+
+          print("Permissions added successfully.")
           PY
 
+
+      # --------------------------------------------------
+      # 14. التحقق من وجود Plugin
+      # --------------------------------------------------
+      - name: Verify AndroidPublicFile plugin
+        run: |
+          echo "Checking plugin..."
+
+          test -f \
+            android/app/src/main/java/com/saidbadji/meterreading/AndroidPublicFilePlugin.java
+
+          echo "Plugin found."
+
+          grep -n "AndroidPublicFile" \
+            android/app/src/main/java/com/saidbadji/meterreading/AndroidPublicFilePlugin.java
+
+          echo "Checking MainActivity registration..."
+
+          grep -n "registerPlugin(AndroidPublicFilePlugin.class)" \
+            android/app/src/main/java/com/saidbadji/meterreading/MainActivity.java
+
+          echo "Plugin registration found."
+
+
+      # --------------------------------------------------
+      # 15. فك مفتاح التوقيع
+      # --------------------------------------------------
       - name: Decode signing keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release-key.jks"
+          echo "$KEYSTORE_BASE64" | base64 --decode \
+            > "$RUNNER_TEMP/release-key.jks"
 
+          test -s "$RUNNER_TEMP/release-key.jks"
+
+          echo "Keystore decoded successfully."
+
+
+      # --------------------------------------------------
+      # 16. بناء APK Release موقّع
+      # --------------------------------------------------
       - name: Build signed Release APK
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
         run: |
           cd android
+
           chmod +x gradlew
 
           ./gradlew assembleRelease \
@@ -92,10 +317,24 @@ jobs:
             -Pandroid.injected.signing.key.alias="$KEYSTORE_ALIAS" \
             -Pandroid.injected.signing.key.password="$KEYSTORE_PASSWORD"
 
+
+      # --------------------------------------------------
+      # 17. التأكد من وجود APK
+      # --------------------------------------------------
       - name: Find signed APK
         run: |
+          echo "Release APK files:"
+
           ls -lh android/app/build/outputs/apk/release/
 
+          test -n "$(find android/app/build/outputs/apk/release/ -name '*.apk' -print -quit)"
+
+          echo "APK created successfully."
+
+
+      # --------------------------------------------------
+      # 18. رفع APK
+      # --------------------------------------------------
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
