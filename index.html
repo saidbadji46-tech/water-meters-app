@@ -619,6 +619,10 @@ canvas.dashboard-chart{width:100%;height:190px;display:block}
         </div>
 
         <!-- معلومات الزبون كاملة تحت الشريط العلوي، مع إبقاء الاسم والكود في الشريط -->
+        <div style="display:flex;justify-content:space-between;align-items:center;direction:ltr;margin-top:8px;gap:8px;">
+          <button type="button" class="btn-ghost" onclick="goToPrevMeter()" style="flex-shrink:0;padding:8px 12px;">⬅️ عودة</button>
+          <button type="button" class="btn-ghost" onclick="goToNextMeter()" style="flex-shrink:0;padding:8px 12px;">➡️ التالي</button>
+        </div>
         <div style="margin-top:8px;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px;">
           <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:7px;">
             👤 اسم ولقب الزبون: <span id="dCustomerName"></span>
@@ -705,8 +709,6 @@ canvas.dashboard-chart{width:100%;height:190px;display:block}
       <div style="height:126px;"></div>
       <div class="bottom-action-wrap" id="bottomActionWrap">
         <div class="quick-actions-bar" id="quickActionsBar">
-          <button type="button" class="btn-quick" onclick="goToPrevMeter()">⬅️ عودة</button>
-          <button type="button" class="btn-quick" onclick="goToNextMeter()">➡️ التالي</button>
           <button type="button" class="btn-quick" onclick="quickScanCode()">📷 مسح الكود</button>
           <button type="button" class="btn-quick" onclick="quickSignature()">✍️ توقيع الزبون</button>
           <button type="button" class="btn-quick" onclick="printReceiptViaBluetooth()" title="ميزة تجريبية — التوافق يختلف حسب طراز الطابعة">🖨️ إيصال Bluetooth</button>
@@ -2949,28 +2951,15 @@ async function blobToBase64(blob){
   });
 }
 
-async function ensureStoragePermission(){
-  try{
-    const fs = window.Capacitor?.Plugins?.Filesystem;
-    if(!fs) return;
-    const status = await fs.checkPermissions();
-    if(status?.publicStorage !== 'granted'){
-      await fs.requestPermissions();
-    }
-  }catch(e){ console.warn('storage permission check failed', e); }
-}
-
 async function saveExportBase64ToAndroid(base64, filename){
   try{
     const Capacitor = window.Capacitor;
     const plugin = Capacitor?.Plugins?.AndroidPublicFile;
     if(!plugin) throw new Error('إضافة AndroidPublicFile غير موجودة في APK');
 
-    await ensureStoragePermission();
-
     const result = await plugin.savePublicFile({filename, data: base64});
     console.log('ANDROID PUBLIC FILE SAVED:', result);
-    toast(`✅ تم حفظ الملف داخل ADE (التخزين الداخلي): ${filename}`);
+    toast(`✅ تم حفظ الملف داخل Documents/ADE: ${filename}`);
     return true;
   }catch(err){
     console.error('Android public file export error:', err);
@@ -3081,7 +3070,13 @@ function getRouteStats(){
   const avgCons = consArr.length ? consArr.reduce((a,b)=>a+b,0)/consArr.length : 0;
   const highThreshold = Math.max(avgCons*3, avgCons+30, 50);
   const zero = readMeters.filter(m=>(Number(m.consumption)||0)===0).length;
-  const high = readMeters.filter(m=>(Number(m.consumption)||0)>highThreshold).length;
+  const high = readMeters.filter(m=>{
+    const cons = Number(m.consumption)||0;
+    if(cons>highThreshold) return true;
+    const importAvg = Number(m.avgConsumption);
+    if(!isNaN(importAvg) && importAvg>0 && cons > importAvg*1.5) return true;
+    return false;
+  }).length;
   const activity = computeActivityEstimate();
   const readCount = readMeters.length; // meters actually read, whether flagged with a signal or not — for the "مرفوعة" display only; pending/progress keep using the status-based counts above, unchanged
   return {total,done,pending,anom,gps,photos,consumption,amount,progress,inh,leak,problems,zero,high,activity,readCount};
