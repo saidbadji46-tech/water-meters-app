@@ -46,32 +46,6 @@ jobs:
           cp android-plugin/AndroidPublicFilePlugin.java "$PKG_DIR/AndroidPublicFilePlugin.java"
           echo "cGFja2FnZSBjb20uc2FpZGJhZGppLm1ldGVycmVhZGluZzsKCmltcG9ydCBhbmRyb2lkLm9zLkJ1bmRsZTsKaW1wb3J0IGNvbS5nZXRjYXBhY2l0b3IuQnJpZGdlQWN0aXZpdHk7CgpwdWJsaWMgY2xhc3MgTWFpbkFjdGl2aXR5IGV4dGVuZHMgQnJpZGdlQWN0aXZpdHkgewogICAgQE92ZXJyaWRlCiAgICBwdWJsaWMgdm9pZCBvbkNyZWF0ZShCdW5kbGUgc2F2ZWRJbnN0YW5jZVN0YXRlKSB7CiAgICAgICAgcmVnaXN0ZXJQbHVnaW4oQW5kcm9pZFB1YmxpY0ZpbGVQbHVnaW4uY2xhc3MpOwogICAgICAgIHN1cGVyLm9uQ3JlYXRlKHNhdmVkSW5zdGFuY2VTdGF0ZSk7CiAgICB9Cn0K" | base64 -d > "$PKG_DIR/MainActivity.java"
 
-      - name: Enable legacy external storage (write straight to internal storage)
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          # 1) Cap targetSdkVersion at 29 -- requestLegacyExternalStorage is
-          #    only honoured up to Android 10 (API 29).
-          vars_path = Path("android/variables.gradle")
-          s = vars_path.read_text()
-          s = re.sub(r"targetSdkVersion\s*=\s*\d+", "targetSdkVersion = 29", s)
-          vars_path.write_text(s)
-
-          # 2) Tell Android this app wants the old (pre-scoped-storage)
-          #    external storage behaviour.
-          manifest_path = Path("android/app/src/main/AndroidManifest.xml")
-          m = manifest_path.read_text()
-          if "requestLegacyExternalStorage" not in m:
-              m = m.replace(
-                  "<application",
-                  '<application\n        android:requestLegacyExternalStorage="true"',
-                  1
-              )
-          manifest_path.write_text(m)
-          PY
-
       - name: Generate Android assets
         run: npx @capacitor/assets generate --android
 
@@ -93,8 +67,6 @@ jobs:
               <uses-permission android:name="android.permission.CAMERA" />
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
               <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
-              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
           """
 
           if "android.permission.CAMERA" not in s:
