@@ -468,7 +468,6 @@ canvas.dashboard-chart{width:100%;height:190px;display:block}
         <div class="route-stat-box"><span class="val val-pending" id="rsPending">0</span><span class="lbl">⏳ عدادات متبقية</span></div>
         <div class="route-stat-box"><span class="val val-anom" id="rsInh">0</span><span class="lbl">🚫 عدد INH</span></div>
         <div class="route-stat-box"><span class="val val-anom" id="rsZero">0</span><span class="lbl">صفر استهلاك</span></div>
-        <div class="route-stat-box"><span class="val val-danger" id="rsHigh">0</span><span class="lbl">استهلاك ضخم</span></div>
         <div class="route-stat-box"><span class="val val-danger" id="rsOverAvg">0</span><span class="lbl">🔺 استهلاك فوق المعدل</span></div>
         <div class="route-stat-box"><span class="val val-total" id="rsConsumption">0</span><span class="lbl">💧 كمية الاستهلاك م³</span></div>
         <div class="route-stat-box"><span class="val val-done" id="rsAmount">0</span><span class="lbl">💰 الثمن الكلي للجولة</span></div>
@@ -799,6 +798,7 @@ canvas.dashboard-chart{width:100%;height:190px;display:block}
         <button class="btn-ghost" onclick="exportReportAsPDF()" style="width:100%;padding:12px;margin-bottom:8px;">🖨️ تصدير PDF (عبر الطباعة)</button>
         <button class="btn-ghost" onclick="exportTXT()" style="width:100%;padding:12px;margin-bottom:8px;">تصدير TXT للجولة فقط</button>
         <button class="btn-ghost" onclick="exportResultsZip()" style="width:100%;padding:12px;margin-bottom:8px;">تصدير ZIP للجولة فقط</button>
+        <button class="btn-ghost" onclick="shareRouteZip()" style="width:100%;padding:12px;margin-bottom:8px;">📤 مشاركة الجولة (واتساب / إيميل...)</button>
         <button class="btn-ghost" onclick="exportLocationsData()" style="width:100%;padding:12px;margin-bottom:8px;">📍 تصدير ملف المواقع</button>
         <button class="btn-ghost" onclick="resetAdeStorageFolder()" style="width:100%;padding:12px;">🔄 إعادة تعيين مجلد الحفظ</button>
         <p style="font-size:10.5px;color:var(--muted);line-height:1.6;margin-top:6px;">استعملها إذا كانت الملفات لا تُحفظ داخل مجلد "ADE" الصحيح — ستُطلب منك اختيار مجلد التخزين من جديد عند أول تصدير قادم.</p>
@@ -1448,13 +1448,13 @@ function renderRouteStatsPanel(){
   const overAvgCount=readMeters.filter(m=>{
     const cons=Number(m.consumption)||0;
     const importAvg=Number(m.avgConsumption);
-    return !isNaN(importAvg) && importAvg>0 && cons>importAvg*1.5;
+    return !isNaN(importAvg) && importAvg>0 && cons>importAvg*1.3;
   }).length;
   const highCount=readMeters.filter(m=>{
     const cons=Number(m.consumption)||0;
     if(cons>highThreshold) return true;
     const importAvg=Number(m.avgConsumption);
-    if(!isNaN(importAvg) && importAvg>0 && cons>importAvg*1.5) return true;
+    if(!isNaN(importAvg) && importAvg>0 && cons>importAvg*1.3) return true;
     return false;
   }).length;
   const totalConsumption=consumptions.reduce((a,b)=>a+b,0);
@@ -1468,7 +1468,7 @@ function renderRouteStatsPanel(){
   set('rsPending',pending);
   set('rsInh',inhCount);
   set('rsZero',zeroCount);
-  set('rsHigh',highCount);
+  set('rsOverAvg',overAvgCount);
   set('rsConsumption',totalConsumption.toFixed(totalConsumption%1?1:0));
   set('rsAmount',totalAmount.toFixed(2)+(currency?(' '+currency):''));
   set('rsLeak',leakCount);
@@ -1500,8 +1500,8 @@ function validateReadingSmart(m,val){
   // itself (not computed locally) — warn before saving if this reading is
   // more than 50% above that reference average.
   const importAvg = Number(m.avgConsumption);
-  if(!isNaN(importAvg) && importAvg>0 && cons > importAvg*1.5){
-    return {ok:false,type:'high',msg:`الاستهلاك ${cons} م³ أعلى من معدل استهلاك هذا الزبون (${importAvg} م³) بأكثر من 50%.`};
+  if(!isNaN(importAvg) && importAvg>0 && cons > importAvg*1.3){
+    return {ok:false,type:'high',msg:`الاستهلاك ${cons} م³ أعلى من معدل استهلاك هذا الزبون (${importAvg} م³) بأكثر من 30%.`};
   }
 
   const hist=(m.history||[]).map(Number).filter(x=>x>=0);
@@ -1680,8 +1680,15 @@ function getMeterHistory(meterCode){
   return out.sort((a,b)=>b.createdAt-a.createdAt);
 }
 function logMeterEditActivity(m, action){
-  // Edit-log feature removed by request — kept as a no-op so existing call
-  // sites don't need to be touched one by one.
+  // General action log intentionally removed from the app UI by request.
+  // Kept as a no-op so existing call sites (signature save, etc.) don't
+  // need to be touched one by one. Corrections/edits that matter for the
+  // report go through logReportEdit() instead — see saveReleve().
+}
+function logReportEdit(m, entry){
+  if(!m.reportEdits) m.reportEdits=[];
+  m.reportEdits.push({at:Date.now(), ...entry});
+  if(m.reportEdits.length>50) m.reportEdits=m.reportEdits.slice(-50);
 }
 function renderMeterInsights(m){
   const el=document.getElementById('meterInsights');
@@ -1866,6 +1873,7 @@ async function chooseLowReadingReason(reason){
   const m=meters.find(x=>x.id===pendingLowReading.meterId);
   const val=pendingLowReading.val;
   if(!m){ closeLowReadingModal(); return; }
+  const oldVal = m.newIndex;
   closeLowReadingModal();
   m.newIndex=val;
   m.consumption=Math.max(0, val-m.prevIndex);
@@ -1876,6 +1884,9 @@ async function chooseLowReadingReason(reason){
   m.status=selectedAnnots.some(c=>c!=='00') ? 'anom' : 'done';
   m.savedAt=new Date().toISOString();
   m.history = Array.isArray(m.history)?m.history:[]; m.history.push(val); m.consumptionHistory = Array.isArray(m.consumptionHistory)?m.consumptionHistory:[]; m.consumptionHistory.push(Number(m.consumption)||0);
+  if(oldVal!=null && oldVal!=='' && !isNaN(parseFloat(oldVal)) && !isNaN(val) && parseFloat(oldVal)!==val){
+    logReportEdit(m, {type:'تعديل القراءة', before:parseFloat(oldVal), after:val});
+  }
   if(signatureDirty){ const sig=document.getElementById('signatureCanvas'); if(sig){ m.signatureData=sig.toDataURL('image/png'); signatureDirty=false; } }
   await saveMeters();
   renderAll();
@@ -1900,12 +1911,25 @@ async function saveReleve(){
   if(!m) return;
   const val = parseFloat(document.getElementById('newIndexInput').value);
   const hasSignal = selectedAnnots.some(c=>c!=='00');
+  const oldVal = m.newIndex;
 
   if(!isNaN(val)){
     const check=validateReadingSmart(m,val);
     if(check.type==='high'){
-      if(!confirm(`⚠️ تحقق من القراءة\n\n${check.msg}\n\nهل تريد الحفظ رغم ذلك؟`)) return;
+      if(!confirm(`⚠️ تحقق من القراءة\n\n${check.msg}\n\nهل تريد الحفظ رغم ذلك؟`)){
+        logReportEdit(m, {type:'تنبيه استهلاك فوق المعدل — تم إلغاء الحفظ', value:val, note:check.msg});
+        await saveMeters();
+        return;
+      }
     }
+  }
+
+  // If the worker just cancelled a high-consumption warning for this meter
+  // and is now saving a different number, add one more explicit check
+  // before letting it through.
+  const lastEdit = m.reportEdits && m.reportEdits.length ? m.reportEdits[m.reportEdits.length-1] : null;
+  if(lastEdit && lastEdit.type==='تنبيه استهلاك فوق المعدل — تم إلغاء الحفظ'){
+    if(!confirm('⚠️ هل أنت متأكد من هذا الرقم؟\n\nأنت تحت الرقابة.')) return;
   }
 
   if(!hasSignal){
@@ -1940,7 +1964,9 @@ async function saveReleve(){
   m.history = Array.isArray(m.history)?m.history:[];
   m.consumptionHistory = Array.isArray(m.consumptionHistory)?m.consumptionHistory:[];
   if(!isNaN(val)){ m.history.push(val); m.consumptionHistory.push(Number(m.consumption)||0); }
-  logMeterEditActivity(m, hasSignal ? `تسجيل إشارة (${m.annot})${!isNaN(val)?' مع قراءة '+val:''}` : `حفظ قراءة ${val} (استهلاك ${m.consumption} م³)`);
+  if(oldVal!=null && oldVal!=='' && !isNaN(parseFloat(oldVal)) && !isNaN(val) && parseFloat(oldVal)!==val){
+    logReportEdit(m, {type:'تعديل القراءة', before:parseFloat(oldVal), after:val});
+  }
   if(signatureDirty){ const sig=document.getElementById('signatureCanvas'); if(sig){ m.signatureData=sig.toDataURL('image/png'); signatureDirty=false; } }
   await saveMeters();
   renderAll();
@@ -3061,9 +3087,9 @@ async function exportTXT(){
    file — every matching customer (by meter code) then already has a saved
    location, so "فتح الخريطة" works immediately without anyone having to
    physically visit the place again just to re-capture GPS. */
-async function exportLocationsData(){
+async function exportLocationsData(silent){
   const withLoc = meters.filter(m=>m.lat && m.lng);
-  if(!withLoc.length){ toast('لا توجد مواقع محفوظة للتصدير'); return; }
+  if(!withLoc.length){ if(!silent) toast('لا توجد مواقع محفوظة للتصدير'); return; }
   const data = withLoc.map(m=>({meter:m.meter, lat:m.lat, lng:m.lng, locAccuracy:m.locAccuracy||null}));
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json;charset=utf-8'});
   await saveExportToCliente(blob, `مواقع_${getRouteExportName()}.json`);
@@ -3129,13 +3155,13 @@ function getRouteStats(){
   const overAvg = readMeters.filter(m=>{
     const cons = Number(m.consumption)||0;
     const importAvg = Number(m.avgConsumption);
-    return !isNaN(importAvg) && importAvg>0 && cons > importAvg*1.5;
+    return !isNaN(importAvg) && importAvg>0 && cons > importAvg*1.3;
   }).length;
   const high = readMeters.filter(m=>{
     const cons = Number(m.consumption)||0;
     if(cons>highThreshold) return true;
     const importAvg = Number(m.avgConsumption);
-    if(!isNaN(importAvg) && importAvg>0 && cons > importAvg*1.5) return true;
+    if(!isNaN(importAvg) && importAvg>0 && cons > importAvg*1.3) return true;
     return false;
   }).length;
   const activity = computeActivityEstimate();
@@ -3269,9 +3295,20 @@ function buildRouteReportHtml(){
     const map = (m.lat&&m.lng) ? `<a href="https://www.google.com/maps?q=${encodeURIComponent(m.lat+','+m.lng)}" target="_blank">📍 فتح</a>` : '—';
     const sig=m.signatureData?'✍️ نعم':'—'; return `<tr><td>${i+1}</td><td>${escH(m.meter)}</td><td>${escH(m.name)}</td><td>${escH(m.meterSerial||'—')}</td><td>${escH(m.address||'—')}</td><td>${m.newIndex!=null?escH(m.newIndex):'—'}</td><td>${hasReading(m)?escH(m.consumption):'—'}</td><td>${escH(status)}</td><td>${map}</td><td>${sig}</td></tr>`;
   }).join('');
+  const editRows = meters.filter(m=>m.reportEdits && m.reportEdits.length).map(m=>{
+    const items = m.reportEdits.slice(-10).map(e=>{
+      const when = new Date(e.at).toLocaleString('ar-DZ');
+      if(e.type==='تعديل القراءة') return `${when} — تعديل القراءة من ${e.before} إلى ${e.after}`;
+      return `${when} — ${e.type}${e.value!=null?` (القراءة: ${e.value})`:''}`;
+    }).join('<br>');
+    return `<tr><td>${escH(m.meter)}</td><td>${escH(m.name)}</td><td style="text-align:right;">${items}</td></tr>`;
+  }).join('');
+  const editsSection = editRows
+    ? `<h2>✏️ تعديلات على القراءات</h2><table><thead><tr><th>رمز الزبون</th><th>الاسم</th><th>التفاصيل</th></tr></thead><tbody>${editRows}</tbody></table>`
+    : '';
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>تقرير الجولة ${route}</title><style>
 @page{size:A4;margin:12mm}body{font-family:Arial,Tahoma,sans-serif;background:#f4f6f8;color:#222;margin:0;padding:16px}.report{max-width:1100px;margin:auto;background:#fff;padding:22px;border-radius:12px;box-shadow:0 2px 12px #0001}h1{margin:0 0 5px;color:#1565c0;font-size:25px}h2{font-size:17px;margin:22px 0 10px;color:#1565c0}.meta{color:#666;font-size:12px;line-height:1.8}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:16px}.card{border:1px solid #ddd;border-radius:9px;padding:12px;text-align:center}.num{font-size:22px;font-weight:800;color:#1565c0}.lbl{font-size:11px;color:#666;margin-top:4px}.bar{height:10px;background:#eee;border-radius:6px;overflow:hidden;margin-top:12px}.bar>span{display:block;height:100%;background:#1565c0;width:${st.progress}%}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#1565c0;color:white;padding:8px}td{padding:7px;border-bottom:1px solid #eee;text-align:right}a{color:#1565c0;font-weight:bold;text-decoration:none}.actions{position:sticky;top:0;background:#fff;padding-bottom:10px;display:flex;gap:8px}.actions button{border:0;border-radius:8px;padding:10px 14px;background:#1565c0;color:#fff;font-weight:bold}@media(max-width:700px){.grid{grid-template-columns:repeat(2,1fr)}table{font-size:9px}.report{padding:12px}}@media print{body{background:#fff;padding:0}.report{box-shadow:none;padding:0}.actions{display:none}.card{break-inside:avoid}}
-</style></head><body><div class="report"><div class="actions"><button onclick="tryPrintReport()">🖨️ طباعة</button><button onclick="tryCloseReport()">✕ إغلاق</button></div><h1>📋 تقرير الجولة ${route}</h1><div class="meta">العامل: ${worker||'—'}<br>التاريخ: ${escH(date)}<br>السعر: ${escH(settings.price)} ${currency}</div><h2>ملخص الجولة</h2><div class="grid"><div class="card"><div class="num">${st.total}</div><div class="lbl">إجمالي العدادات</div></div><div class="card"><div class="num">${st.readCount}</div><div class="lbl">مرفوعة</div></div><div class="card"><div class="num">${st.pending}</div><div class="lbl">معلّقة</div></div><div class="card"><div class="num">${st.anom}</div><div class="lbl">إشارات</div></div><div class="card"><div class="num">${st.gps}</div><div class="lbl">مواقع GPS</div></div><div class="card"><div class="num">${st.photos}</div><div class="lbl">صور</div></div><div class="card"><div class="num">${st.consumption}</div><div class="lbl">الاستهلاك م³</div></div><div class="card"><div class="num">${st.amount.toFixed(2)} ${currency}</div><div class="lbl">إجمالي المبلغ</div></div></div><div class="bar"><span></span></div><div class="meta" style="margin-top:5px">نسبة التقدم: ${st.progress}%</div><h2>🎯 لوحة إحصائيات الجولة</h2><div class="grid"><div class="card"><div class="num">${st.inh}</div><div class="lbl">🚫 عدد INH</div></div><div class="card"><div class="num">${st.zero}</div><div class="lbl">صفر استهلاك</div></div><div class="card"><div class="num">${st.high}</div><div class="lbl">استهلاك ضخم</div></div><div class="card"><div class="num">${st.leak}</div><div class="lbl">💧 تسربات FC</div></div><div class="card"><div class="num">${st.problems}</div><div class="lbl">⚠️ عدادات ذات مشاكل</div></div><div class="card"><div class="num">${st.gps}</div><div class="lbl">📍 مواقع مسجلة</div></div><div class="card"><div class="num">${st.progress}%</div><div class="lbl">📊 نسبة الإنجاز</div></div></div><h2>🚶 نشاط العامل التقديري</h2><div class="meta">تقدير تقريبي وليس دقيقاً طبياً، مبني على مواقع GPS المسجّلة فقط.</div><div class="grid"><div class="card"><div class="num">${st.activity.distanceKm.toFixed(1)}</div><div class="lbl">كم مقطوعة تقريباً</div></div><div class="card"><div class="num">${st.activity.calories!=null?st.activity.calories:'—'}</div><div class="lbl">سعرة تقريبية محروقة</div></div></div><h2>📈 تطور الإنجاز</h2><div class="meta">الإنجاز المسجل يومياً حسب تاريخ حفظ القراءة.</div><table><thead><tr><th>اليوم</th><th>عدد القراءات</th></tr></thead><tbody>${Object.entries(meters.filter(m=>m.savedAt).reduce((o,m)=>{const k=new Date(m.savedAt).toLocaleDateString('ar-DZ');o[k]=(o[k]||0)+(hasReading(m)?1:0);return o},{})).map(([d,n])=>`<tr><td>${d}</td><td>${n}</td></tr>`).join('')}</tbody></table><h2>🏆 أعلى استهلاك</h2><table><thead><tr><th>الزبون</th><th>الاستهلاك</th></tr></thead><tbody>${meters.filter(hasReading).sort((a,b)=>(b.consumption||0)-(a.consumption||0)).slice(0,10).map(m=>`<tr><td>${escH(m.name)} (${escH(m.meter)})</td><td>${m.consumption||0} م³</td></tr>`).join('')}</tbody></table><h2>تفاصيل الجولة</h2><table><thead><tr><th>#</th><th>رمز الزبون</th><th>الاسم</th><th>الرقم التسلسلي</th><th>العنوان</th><th>القراءة</th><th>الاستهلاك</th><th>الحالة</th><th>الموقع</th><th>التوقيع</th></tr></thead><tbody>${rows}</tbody></table></div>
+</style></head><body><div class="report"><div class="actions"><button onclick="tryPrintReport()">🖨️ طباعة</button><button onclick="tryCloseReport()">✕ إغلاق</button></div><h1>📋 تقرير الجولة ${route}</h1><div class="meta">العامل: ${worker||'—'}<br>التاريخ: ${escH(date)}<br>السعر: ${escH(settings.price)} ${currency}</div><h2>ملخص الجولة</h2><div class="grid"><div class="card"><div class="num">${st.total}</div><div class="lbl">إجمالي العدادات</div></div><div class="card"><div class="num">${st.readCount}</div><div class="lbl">مرفوعة</div></div><div class="card"><div class="num">${st.pending}</div><div class="lbl">معلّقة</div></div><div class="card"><div class="num">${st.anom}</div><div class="lbl">إشارات</div></div><div class="card"><div class="num">${st.gps}</div><div class="lbl">مواقع GPS</div></div><div class="card"><div class="num">${st.photos}</div><div class="lbl">صور</div></div><div class="card"><div class="num">${st.consumption}</div><div class="lbl">الاستهلاك م³</div></div><div class="card"><div class="num">${st.amount.toFixed(2)} ${currency}</div><div class="lbl">إجمالي المبلغ</div></div></div><div class="bar"><span></span></div><div class="meta" style="margin-top:5px">نسبة التقدم: ${st.progress}%</div><h2>🎯 لوحة إحصائيات الجولة</h2><div class="grid"><div class="card"><div class="num">${st.inh}</div><div class="lbl">🚫 عدد INH</div></div><div class="card"><div class="num">${st.zero}</div><div class="lbl">صفر استهلاك</div></div><div class="card"><div class="num">${st.overAvg}</div><div class="lbl">🔺 استهلاك فوق المعدل</div></div><div class="card"><div class="num">${st.leak}</div><div class="lbl">💧 تسربات FC</div></div><div class="card"><div class="num">${st.problems}</div><div class="lbl">⚠️ عدادات ذات مشاكل</div></div><div class="card"><div class="num">${st.gps}</div><div class="lbl">📍 مواقع مسجلة</div></div><div class="card"><div class="num">${st.progress}%</div><div class="lbl">📊 نسبة الإنجاز</div></div></div><h2>🚶 نشاط العامل التقديري</h2><div class="meta">تقدير تقريبي وليس دقيقاً طبياً، مبني على مواقع GPS المسجّلة فقط.</div><div class="grid"><div class="card"><div class="num">${st.activity.distanceKm.toFixed(1)}</div><div class="lbl">كم مقطوعة تقريباً</div></div><div class="card"><div class="num">${st.activity.calories!=null?st.activity.calories:'—'}</div><div class="lbl">سعرة تقريبية محروقة</div></div></div><h2>📈 تطور الإنجاز</h2><div class="meta">الإنجاز المسجل يومياً حسب تاريخ حفظ القراءة.</div><table><thead><tr><th>اليوم</th><th>عدد القراءات</th></tr></thead><tbody>${Object.entries(meters.filter(m=>m.savedAt).reduce((o,m)=>{const k=new Date(m.savedAt).toLocaleDateString('ar-DZ');o[k]=(o[k]||0)+(hasReading(m)?1:0);return o},{})).map(([d,n])=>`<tr><td>${d}</td><td>${n}</td></tr>`).join('')}</tbody></table><h2>🏆 أعلى استهلاك</h2><table><thead><tr><th>الزبون</th><th>الاستهلاك</th></tr></thead><tbody>${meters.filter(hasReading).sort((a,b)=>(b.consumption||0)-(a.consumption||0)).slice(0,10).map(m=>`<tr><td>${escH(m.name)} (${escH(m.meter)})</td><td>${m.consumption||0} م³</td></tr>`).join('')}</tbody></table><h2>تفاصيل الجولة</h2><table><thead><tr><th>#</th><th>رمز الزبون</th><th>الاسم</th><th>الرقم التسلسلي</th><th>العنوان</th><th>القراءة</th><th>الاستهلاك</th><th>الحالة</th><th>الموقع</th><th>التوقيع</th></tr></thead><tbody>${rows}</tbody></table>${editsSection}</div>
 <script>
 function tryPrintReport(){
   try{ window.print(); }
@@ -3312,6 +3349,7 @@ async function exportCompleteRound(){
   if(archiveStats(meters).pending===0) await archiveCurrentRound(true);
   // exportResultsZip already contains the TXT, report, images and Excel. Save a standalone TXT too.
   await exportTXT();
+  await exportLocationsData(true);
   toast(`✅ تم تصدير الجولة كاملة: ${getRouteExportName()}`);
 }
 function startExportCompleteRound(){
@@ -3353,15 +3391,56 @@ if(typeof window.JSZip==='function')return true;
 // 3) last resort: CDN fallback, same pattern used for XLSX/Tesseract above
 try{await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');}catch(e3){console.warn('JSZip: CDN fallback failed',e3);}
 return typeof window.JSZip==='function';}
+async function buildRouteZipBase64(){
+  if(!meters.length){ toast('لا توجد بيانات لتصديرها'); return null; }
+  if(!await ensureJSZip()){ toast('❌ تعذر تحميل محرك ZIP المحلي'); return null; }
+  if(typeof XLSX==='undefined'){ toast('❌ مكتبة Excel غير متوفرة؛ تحقق من الاتصال بالإنترنت'); return null; }
+  toast('1/4 تجهيز Excel...');const rows=meters.map(m=>({'رمز الزبون':m.meter,'الرقم التسلسلي للعداد':m.meterSerial||'','الاسم':m.name,'العنوان':m.address||'','نوع المشترك':m.subType||'','الهاتف':m.phone||'','رقم التعريف الوطني':m.nationalId||'','القراءة السابقة':m.prevIndex,'القراءة الجديدة':m.newIndex!=null?m.newIndex:'','الاستهلاك (م³)':m.consumption||'','المبلغ':m.amount||'','الحالة':m.status==='done'?'مرفوعة':(m.status==='anom'?'إشارة':'معلّقة'),'كود الإشارات':m.annot||'','سبب القراءة الأقل/المساوية':m.lowReadingReason||'','الملاحظة':m.obs||'','لديه صورة':m.hasPhoto?'نعم':'لا','خط العرض':m.lat||'','خط الطول':m.lng||'','رابط الخريطة':(m.lat&&m.lng)?`https://www.google.com/maps?q=${m.lat},${m.lng}`:'','تاريخ الرفع':m.savedAt?new Date(m.savedAt).toLocaleString('ar'):''}));
+  const ws=XLSX.utils.json_to_sheet(rows);const headers=Object.keys(rows[0]||{});ws['!cols']=headers.map(h=>{let ml=String(h).length;for(const r of rows)ml=Math.max(ml,String(r[h]??'').length);return{wch:Math.min(55,Math.max(10,ml+2))};});const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'القراءات');const xlsxOut=XLSX.write(wb,{type:'array',bookType:'xlsx'});const zip=new JSZip(),route=getRouteExportName();
+  const lines=meters.map(buildAdeExportLine);zip.file(`${route}.txt`,'\uFEFF'+lines.join('\r\n'));zip.file('client.xlsx',xlsxOut);
+  toast('2/4 إضافة الصور...');const photos=zip.folder('الصور');let photoCount=0;for(const m of meters){if(!m.hasPhoto)continue;try{const d=await Promise.race([sg('photo:'+m.id),new Promise(r=>setTimeout(()=>r(null),5000))]);if(d&&d.includes(',')){photos.file(`${m.meter||m.id}.jpg`,d.split(',')[1],{base64:true});photoCount++;}}catch(e){}}
+  toast('3/4 إضافة المواقع والتقرير...');zip.file('المواقع.html',buildLocationsReportHtml());zip.file('تقرير الجولة.html',buildRouteReportHtml());
+  toast('4/4 ضغط الملف...');const zipBase64=await zip.generateAsync({type:'base64',compression:'DEFLATE',compressionOptions:{level:6},streamFiles:true},meta=>{if(meta&&meta.percent)toast(`4/4 ضغط الملف ${Math.round(meta.percent)}%...`);});
+  return {zipBase64, photoCount, route};
+}
+
 async function exportResultsZip(){
-if(!meters.length){toast('لا توجد بيانات لتصديرها');return false;}if(!await ensureJSZip()){toast('❌ تعذر تحميل محرك ZIP المحلي');return false;}if(typeof XLSX==='undefined'){toast('❌ مكتبة Excel غير متوفرة؛ تحقق من الاتصال بالإنترنت');return false;}
-try{toast('1/4 تجهيز Excel...');const rows=meters.map(m=>({'رمز الزبون':m.meter,'الرقم التسلسلي للعداد':m.meterSerial||'','الاسم':m.name,'العنوان':m.address||'','نوع المشترك':m.subType||'','الهاتف':m.phone||'','رقم التعريف الوطني':m.nationalId||'','القراءة السابقة':m.prevIndex,'القراءة الجديدة':m.newIndex!=null?m.newIndex:'','الاستهلاك (م³)':m.consumption||'','المبلغ':m.amount||'','الحالة':m.status==='done'?'مرفوعة':(m.status==='anom'?'إشارة':'معلّقة'),'كود الإشارات':m.annot||'','سبب القراءة الأقل/المساوية':m.lowReadingReason||'','الملاحظة':m.obs||'','لديه صورة':m.hasPhoto?'نعم':'لا','خط العرض':m.lat||'','خط الطول':m.lng||'','رابط الخريطة':(m.lat&&m.lng)?`https://www.google.com/maps?q=${m.lat},${m.lng}`:'','تاريخ الرفع':m.savedAt?new Date(m.savedAt).toLocaleString('ar'):''}));
-const ws=XLSX.utils.json_to_sheet(rows);const headers=Object.keys(rows[0]||{});ws['!cols']=headers.map(h=>{let ml=String(h).length;for(const r of rows)ml=Math.max(ml,String(r[h]??'').length);return{wch:Math.min(55,Math.max(10,ml+2))};});const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'القراءات');const xlsxOut=XLSX.write(wb,{type:'array',bookType:'xlsx'});const zip=new JSZip(),route=getRouteExportName();
-const lines=meters.map(buildAdeExportLine);zip.file(`${route}.txt`,'\uFEFF'+lines.join('\r\n'));zip.file('client.xlsx',xlsxOut);
-toast('2/4 إضافة الصور...');const photos=zip.folder('الصور');let photoCount=0;for(const m of meters){if(!m.hasPhoto)continue;try{const d=await Promise.race([sg('photo:'+m.id),new Promise(r=>setTimeout(()=>r(null),5000))]);if(d&&d.includes(',')){photos.file(`${m.meter||m.id}.jpg`,d.split(',')[1],{base64:true});photoCount++;}}catch(e){}}
-toast('3/4 إضافة المواقع والتقرير...');zip.file('المواقع.html',buildLocationsReportHtml());zip.file('تقرير الجولة.html',buildRouteReportHtml());
-toast('4/4 ضغط الملف...');const zipBase64=await zip.generateAsync({type:'base64',compression:'DEFLATE',compressionOptions:{level:6},streamFiles:true},meta=>{if(meta&&meta.percent)toast(`4/4 ضغط الملف ${Math.round(meta.percent)}%...`);});const saved=await saveExportBase64ToAndroid(zipBase64,`${route}.zip`);if(!saved) return false;toast(`✅ تم تصدير ZIP فعلياً: ${route} (${photoCount} صورة)`);return true;
+try{
+  const built = await buildRouteZipBase64();
+  if(!built) return false;
+  const {zipBase64, photoCount, route} = built;
+  const saved=await saveExportBase64ToAndroid(zipBase64,`${route}.zip`);if(!saved) return false;toast(`✅ تم تصدير ZIP فعلياً: ${route} (${photoCount} صورة)`);return true;
 }catch(err){console.error(err);toast('❌ فشل تصدير ZIP: '+(err&&err.message?err.message:'خطأ غير معروف'));return false;}}
+
+/* ====== SHARE (WhatsApp / Email / etc via the OS share sheet) ====== */
+function base64ToBytes(base64){
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+async function shareRouteZip(){
+  try{
+    const built = await buildRouteZipBase64();
+    if(!built) return;
+    const {zipBase64, route} = built;
+    const bytes = base64ToBytes(zipBase64);
+    const file = new File([bytes], `${route}.zip`, {type:'application/zip'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:`جولة ${route}`, text:`ملف الجولة ${route}`});
+      toast('✅ تم فتح نافذة المشاركة');
+    } else if(navigator.share){
+      // Some devices support share() without file support -- fall back to text only.
+      await navigator.share({title:`جولة ${route}`, text:`جولة ${route} — الملف محفوظ في Documents/ADE على الهاتف`});
+    } else {
+      toast('❌ المشاركة غير مدعومة على هذا الجهاز');
+    }
+  }catch(err){
+    if(err && err.name==='AbortError') return; // user cancelled the share sheet
+    console.error('share error', err);
+    toast('❌ تعذّرت المشاركة: '+(err&&err.message?err.message:'خطأ غير معروف'));
+  }
+}
 
 /* ====== EXPORT / IMPORT (JSON backup) ====== */
 async function autoBackupIfNeeded(){
