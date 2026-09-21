@@ -469,6 +469,7 @@ canvas.dashboard-chart{width:100%;height:190px;display:block}
         <div class="route-stat-box"><span class="val val-anom" id="rsInh">0</span><span class="lbl">🚫 عدد INH</span></div>
         <div class="route-stat-box"><span class="val val-anom" id="rsZero">0</span><span class="lbl">صفر استهلاك</span></div>
         <div class="route-stat-box"><span class="val val-danger" id="rsOverAvg">0</span><span class="lbl">🔺 استهلاك فوق المعدل</span></div>
+        <div class="route-stat-box"><span class="val val-danger" id="rsPrevAr">—</span><span class="lbl">⛔ عدادات متوقفة (AR) مقارنة بالسابق</span></div>
         <div class="route-stat-box"><span class="val val-total" id="rsConsumption">0</span><span class="lbl">💧 كمية الاستهلاك م³</span></div>
         <div class="route-stat-box"><span class="val val-done" id="rsAmount">0</span><span class="lbl">💰 الثمن الكلي للجولة</span></div>
         <div class="route-stat-box"><span class="val val-leak" id="rsLeak">0</span><span class="lbl">💧 تسربات FC</span></div>
@@ -551,6 +552,12 @@ canvas.dashboard-chart{width:100%;height:190px;display:block}
       <div style="padding:14px 14px 4px;font-size:16px;font-weight:900;">🗂️ أرشيف الجولات</div>
       <div style="padding:0 14px 8px;font-size:11.5px;color:var(--muted);">كل جولة مكتملة محفوظة هنا للمراجعة وإعادة فتح التقرير.</div>
       <div id="performanceStats" style="margin:0 14px 12px;"></div>
+      <div class="manage-card" style="margin:0 14px 12px;">
+        <h3>📅 موعد الجولة القادمة</h3>
+        <p style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">يُحسب تلقائياً بعد إتمام كل جولة (90 يوماً من تاريخ الإتمام، مع تفادي الخميس والجمعة). هذه المعلومة محفوظة بشكل منفصل ولا تُحذف مع "مسح جميع البيانات".</p>
+        <div id="nextRoundReminders"></div>
+        <button class="btn-ghost" onclick="printNextRoundSchedule()" style="width:100%;padding:10px;margin-top:8px;">🖨️ طباعة برنامج الجولة القادمة</button>
+      </div>
       <div id="archiveList"></div>
     </div>
 
@@ -622,12 +629,17 @@ canvas.dashboard-chart{width:100%;height:190px;display:block}
           <button type="button" onclick="goToPrevMeter()" style="flex-shrink:0;padding:8px 14px;border:none;border-radius:8px;background:#FB8C00;color:#fff;font-weight:800;font-family:'Tajawal',sans-serif;cursor:pointer;">⬅️ عودة</button>
           <button type="button" onclick="goToNextMeter()" style="flex-shrink:0;padding:8px 14px;border:none;border-radius:8px;background:#43A047;color:#fff;font-weight:800;font-family:'Tajawal',sans-serif;cursor:pointer;">➡️ التالي</button>
         </div>
+        <div id="prevSignalBanner" style="display:none;margin-top:8px;padding:10px 12px;background:#FFF3E0;border:1px solid #FFB74D;border-radius:10px;font-size:12.5px;color:#8D5300;font-weight:700;line-height:1.7;position:relative;">
+          <span id="prevSignalBannerText"></span>
+          <button type="button" onclick="dismissPrevSignalBanner()" title="إغلاق" style="position:absolute;top:6px;left:8px;background:none;border:none;font-size:15px;font-weight:900;color:#8D5300;cursor:pointer;line-height:1;padding:2px 4px;">✖</button>
+        </div>
         <div style="margin-top:8px;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px;">
           <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:7px;">
             👤 اسم ولقب الزبون: <span id="dCustomerName"></span>
           </div>
           <div style="font-size:12.5px;color:var(--muted);line-height:1.9;">
             🔢 الرقم التسلسلي: <b style="font-family:'IBM Plex Mono',monospace;color:var(--text);" id="dMeterSerial"></b>
+            <span id="dMeterStatus"></span>
             <br>
             رمز الزبون: <b style="font-family:'IBM Plex Mono',monospace;color:var(--text);" id="dMeterNum"></b>
             &nbsp;|&nbsp; الهاتف: <span id="dPhone">—</span>
@@ -783,6 +795,10 @@ canvas.dashboard-chart{width:100%;height:190px;display:block}
         <button class="btn-ghost" onclick="document.getElementById('locFile').click()" style="width:100%;padding:12px;margin-top:8px;">📍 استيراد ملف المواقع</button>
         <input type="file" id="locFile" accept=".json" style="display:none" onchange="importLocationsFile(this)">
         <div id="importLocStatus" style="font-size:12px;color:var(--muted);margin-top:8px;"></div>
+        <button class="btn-ghost" onclick="document.getElementById('sigFile').click()" style="width:100%;padding:12px;margin-top:8px;">⚠️ استيراد ملف الإشارات</button>
+        <input type="file" id="sigFile" accept=".json" style="display:none" onchange="importSignalsFile(this)">
+        <div id="importSigStatus" style="font-size:12px;color:var(--muted);margin-top:8px;"></div>
+        <p style="font-size:10.5px;color:var(--muted);line-height:1.6;margin-top:4px;">استورد ملف الإشارات (المُصدَّر سابقاً من "تصدير ملف الإشارات") مع ملف الجولة، وكل زبون كانت له إشارة (تسرب، عداد تالف...) فجولة سابقة يبان له تنبيه بذلك عند فتح صفحته، تسألو هل تم إصلاحها.</p>
         <p style="font-size:10.5px;color:var(--muted);line-height:1.6;margin-top:4px;">استورد ملف المواقع (المُصدَّر سابقاً من "تصدير ملف المواقع") مع ملف الجولة، وتلقائياً كل زبون سُجّل موقعه من قبل يظهر موقعه جاهزاً عند فتح صفحته — بلا حاجة تزور المكان من جديد.</p>
       </div>
     </div>
@@ -800,6 +816,7 @@ canvas.dashboard-chart{width:100%;height:190px;display:block}
         <button class="btn-ghost" onclick="exportResultsZip()" style="width:100%;padding:12px;margin-bottom:8px;">تصدير ZIP للجولة فقط</button>
         <button class="btn-ghost" onclick="shareRouteZip()" style="width:100%;padding:12px;margin-bottom:8px;">📤 مشاركة الجولة (واتساب / إيميل...)</button>
         <button class="btn-ghost" onclick="exportLocationsData()" style="width:100%;padding:12px;margin-bottom:8px;">📍 تصدير ملف المواقع</button>
+        <button class="btn-ghost" onclick="exportSignalsData()" style="width:100%;padding:12px;margin-bottom:8px;">⚠️ تصدير ملف الإشارات</button>
         <button class="btn-ghost" onclick="resetAdeStorageFolder()" style="width:100%;padding:12px;">🔄 إعادة تعيين مجلد الحفظ</button>
         <p style="font-size:10.5px;color:var(--muted);line-height:1.6;margin-top:6px;">استعملها إذا كانت الملفات لا تُحفظ داخل مجلد "ADE" الصحيح — ستُطلب منك اختيار مجلد التخزين من جديد عند أول تصدير قادم.</p>
       </div>
@@ -1048,6 +1065,8 @@ async function loadData(){
   const s = await sg('settings'); if(s){ settings=Object.assign(settings, JSON.parse(s)); }
   if(!settings.worker) settings.worker = 'BENAMMAR Said';
   try{ const a=await sg('roundArchives'); roundArchives=a?JSON.parse(a):[]; }catch(e){ roundArchives=[]; }
+  await loadNextRoundReminders();
+  await loadPrevArComparison();
   if(settings.darkMode) document.body.classList.add('dark');
   currentRoundCreatedAt = settings.currentRoundCreatedAt || Date.now();
   document.getElementById('mRouteNum').value = settings.routeNum;
@@ -1070,6 +1089,7 @@ async function loadData(){
   window.addEventListener('offline', updateConnIndicator);
   autoBackupIfNeeded();
   const splashDuration = (window.__adeSplashDuration!=null) ? window.__adeSplashDuration : 10000;
+  setTimeout(checkOverdueReminders, splashDuration+1500);
   setTimeout(()=>{const sp=document.getElementById('splash');if(sp){sp.style.opacity='0';setTimeout(()=>sp.remove(),400);}}, splashDuration);
   if(!window.__adeSkipReshow){
     setTimeout(showPinOverlay, splashDuration+50);
@@ -1469,6 +1489,7 @@ function renderRouteStatsPanel(){
   set('rsInh',inhCount);
   set('rsZero',zeroCount);
   set('rsOverAvg',overAvgCount);
+  renderPrevArComparison();
   set('rsConsumption',totalConsumption.toFixed(totalConsumption%1?1:0));
   set('rsAmount',totalAmount.toFixed(2)+(currency?(' '+currency):''));
   set('rsLeak',leakCount);
@@ -1528,12 +1549,80 @@ function renderDeepDashboard(){
   const rank=document.getElementById('rankList'); if(rank){const top=meters.filter(hasReading).sort((a,b)=>(b.consumption||0)-(a.consumption||0)).slice(0,10);rank.innerHTML=top.length?top.map((m,i)=>`<div class="rank-row"><div class="rank-num">${i+1}</div><div class="rank-info"><div class="rank-name">${escH(m.name)}</div><div class="rank-meta">${escH(m.meter)}</div></div><div class="pro-value" style="font-size:16px">${m.consumption||0}<small style="font-size:9px"> م³</small></div></div>`).join(''):'<div class="empty-state" style="padding:18px">لا توجد قراءات بعد.</div>';}
   const lab=document.getElementById('dailyChartLabel');if(lab)lab.textContent=keys.length?`${keys.length} أيام`:'—';
 }
+let nextRoundReminders = {};
+async function loadNextRoundReminders(){
+  try{ const r = await sg('nextRoundReminders'); nextRoundReminders = r?JSON.parse(r):{}; }
+  catch(e){ nextRoundReminders = {}; }
+}
+function computeNextRoundDate(fromMs){
+  const d = new Date(fromMs);
+  d.setDate(d.getDate()+90);
+  const day = d.getDay(); // 0=Sun ... 4=Thu, 5=Fri, 6=Sat
+  if(day===4) d.setDate(d.getDate()+2); // Thursday -> skip Thu+Fri, land Saturday
+  else if(day===5) d.setDate(d.getDate()+1); // Friday -> Saturday
+  return d;
+}
+async function saveNextRoundReminder(route, completedAtMs){
+  const due = computeNextRoundDate(completedAtMs);
+  nextRoundReminders[route] = {route, completedAt: completedAtMs, dueDate: due.getTime()};
+  await safeSet('nextRoundReminders', JSON.stringify(nextRoundReminders));
+  renderNextRoundReminders();
+}
+function renderNextRoundReminders(){
+  const el = document.getElementById('nextRoundReminders');
+  if(!el) return;
+  const entries = Object.values(nextRoundReminders).sort((a,b)=>a.dueDate-b.dueDate);
+  if(!entries.length){ el.innerHTML='لا توجد جولات مكتملة بعد لحساب الموعد القادم.'; return; }
+  const today = Date.now();
+  el.innerHTML = entries.map(e=>{
+    const daysLeft = Math.ceil((e.dueDate-today)/86400000);
+    const dueStr = new Date(e.dueDate).toLocaleDateString('ar-DZ',{weekday:'long', year:'numeric', month:'long', day:'numeric'});
+    const status = daysLeft<0 ? `<span style="color:var(--danger);font-weight:800;">متأخرة ${Math.abs(daysLeft)} يوم!</span>`
+      : daysLeft===0 ? `<span style="color:var(--danger);font-weight:800;">اليوم!</span>`
+      : daysLeft<=7 ? `<span style="color:#E65100;font-weight:800;">باقي ${daysLeft} يوم</span>`
+      : `<span style="color:var(--muted);">باقي ${daysLeft} يوم</span>`;
+    return `<div style="padding:10px 0;border-top:1px solid var(--line);">
+      <div style="font-weight:800;color:var(--text);">📅 ${escH(e.route)}</div>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:3px;">الموعد المتوقع: ${dueStr}</div>
+      <div style="font-size:12.5px;margin-top:3px;">${status}</div>
+    </div>`;
+  }).join('');
+}
+function checkOverdueReminders(){
+  const today = Date.now();
+  const overdue = Object.values(nextRoundReminders).filter(e=>e.dueDate<=today);
+  if(overdue.length){
+    toast(`🔔 حان وقت الجولة القادمة: ${overdue.map(e=>e.route).join('، ')}`);
+  }
+}
+function buildNextRoundReportHtml(){
+  const entries = Object.values(nextRoundReminders).sort((a,b)=>a.dueDate-b.dueDate);
+  const rows = entries.map(e=>{
+    const dueStr = new Date(e.dueDate).toLocaleDateString('ar-DZ',{weekday:'long', year:'numeric', month:'long', day:'numeric'});
+    const completedStr = new Date(e.completedAt).toLocaleDateString('ar-DZ');
+    return `<tr><td>${escH(e.route)}</td><td>${completedStr}</td><td><b>${dueStr}</b></td></tr>`;
+  }).join('');
+  return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>برنامج الجولات القادمة</title>
+  <style>body{font-family:'Tajawal',Arial,sans-serif;padding:24px;}h1{font-size:20px;}table{width:100%;border-collapse:collapse;margin-top:14px;}th,td{border:1px solid #ccc;padding:8px 10px;text-align:right;font-size:13px;}th{background:#f0f0f0;}</style>
+  </head><body>
+  <h1>📅 برنامج الجولات القادمة</h1>
+  <p>تاريخ الطباعة: ${new Date().toLocaleDateString('ar-DZ')}</p>
+  <table><thead><tr><th>رمز الجولة</th><th>تاريخ إتمام الجولة الحالية</th><th>الموعد المتوقع للجولة القادمة</th></tr></thead><tbody>${rows||'<tr><td colspan="3">لا توجد جولات مكتملة بعد</td></tr>'}</tbody></table>
+  </body></html>`;
+}
+function printNextRoundSchedule(){
+  if(showReportHtml(buildNextRoundReportHtml())) setTimeout(printReportViewer,400);
+}
+
 async function archiveCurrentRound(silent=false){
   if(!meters.length){if(!silent)toast('لا توجد جولة لأرشفتها');return null;}
   const st=archiveStats(meters); if(st.pending>0&&!silent){if(!confirm(`مازال هناك ${st.pending} عداد غير مكتمل. هل تريد أرشفة الجولة رغم ذلك؟`))return null;}
   const route=getRouteExportName(); const existing=roundArchives.find(a=>a.route===route && Math.abs(a.createdAt-currentRoundCreatedAt)<5000); if(existing){if(!silent)toast('الجولة مؤرشفة مسبقاً');return existing;}
-  const snap={id:'A'+Date.now(),route,createdAt:currentRoundCreatedAt||Date.now(),completedAt:Date.now(),settings:JSON.parse(JSON.stringify(settings)),meters:JSON.parse(JSON.stringify(meters)),stats:st};
-  roundArchives.unshift(snap); if(roundArchives.length>50)roundArchives=roundArchives.slice(0,50); await ss('roundArchives',JSON.stringify(roundArchives)); if(!silent)toast('🗂️ تم حفظ الجولة في الأرشيف'); renderArchive();return snap;
+  const completedAt=Date.now();
+  const snap={id:'A'+Date.now(),route,createdAt:currentRoundCreatedAt||Date.now(),completedAt,settings:JSON.parse(JSON.stringify(settings)),meters:JSON.parse(JSON.stringify(meters)),stats:st};
+  roundArchives.unshift(snap); if(roundArchives.length>50)roundArchives=roundArchives.slice(0,50); await ss('roundArchives',JSON.stringify(roundArchives));
+  if(st.pending===0){ await saveNextRoundReminder(settings.routeNum||route, completedAt); }
+  if(!silent)toast('🗂️ تم حفظ الجولة في الأرشيف'); renderArchive();return snap;
 }
 function renderPerformanceStats(){
   const el=document.getElementById('performanceStats');
@@ -1565,9 +1654,40 @@ function renderPerformanceStats(){
       <div class="route-stat-box"><span class="val val-leak" style="font-size:14px;">${avgSpeedLabel}</span><span class="lbl">⏱️ متوسط سرعة الإنجاز</span></div>
       <div class="route-stat-box" style="grid-column:span 2;"><span class="val val-done" style="font-size:13px;">${fastestLabel}</span><span class="lbl">🏆 أسرع جولة</span></div>
     </div>
+    ${buildConsumptionTrendSvg()}
   </div>`;
 }
-function renderArchive(){renderPerformanceStats();const el=document.getElementById('archiveList');if(!el)return;if(!roundArchives.length){el.innerHTML='<div class="empty-state"><div class="ico">🗂️</div><p>لا توجد جولات سابقة بعد.</p></div>';return;}el.innerHTML=roundArchives.map(a=>`<div class="archive-card"><div style="display:flex;justify-content:space-between;gap:8px"><div><div style="font-size:15px;font-weight:900;color:var(--blue)">${escH(a.route)}</div><div style="font-size:11px;color:var(--muted);margin-top:3px">${new Date(a.completedAt).toLocaleString('ar-DZ')}</div></div><span class="chip chip-done">${a.stats.done}/${a.stats.total} مرفوعة</span></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px"><div class="stat-box" style="padding:8px"><b>${a.stats.total}</b><div class="lbl">زبون</div></div><div class="stat-box" style="padding:8px"><b>${a.stats.consumption}</b><div class="lbl">م³</div></div><div class="stat-box" style="padding:8px"><b>${a.stats.anom}</b><div class="lbl">إشارات</div></div></div><div class="archive-actions"><button class="btn-prim" onclick="openArchivedReport('${a.id}')">📋 التقرير</button><button class="btn-ghost" onclick="restoreArchive('${a.id}')">♻️ استرجاع</button><button class="btn-ghost" style="color:var(--danger);border-color:#FFCDD2;" onclick="deleteArchivedRound('${a.id}')">🗑️ حذف</button></div></div>`).join('');}
+function buildConsumptionTrendSvg(){
+  const chronological = roundArchives.slice().sort((a,b)=>a.completedAt-b.completedAt).slice(-12); // last 12 rounds, oldest→newest
+  if(chronological.length<2) return '';
+  const W=320, H=120, padL=28, padB=22, padT=10, padR=8;
+  const chartW = W-padL-padR, chartH = H-padT-padB;
+  const maxCons = Math.max(1, ...chronological.map(a=>a.stats.consumption||0));
+  const barW = chartW/chronological.length;
+  const bars = chronological.map((a,i)=>{
+    const v = a.stats.consumption||0;
+    const bh = (v/maxCons)*chartH;
+    const x = padL + i*barW + barW*0.15;
+    const y = padT + (chartH-bh);
+    const w = barW*0.7;
+    const anomHigh = a.stats.anom>0;
+    const color = anomHigh ? '#EF9A9A' : '#90CAF9';
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${bh.toFixed(1)}" fill="${color}" rx="2"><title>${escH(a.route)}: ${v} م³ (${new Date(a.completedAt).toLocaleDateString('ar-DZ')})</title></rect>`;
+  }).join('');
+  const firstLabel = new Date(chronological[0].completedAt).toLocaleDateString('ar-DZ',{month:'short',day:'numeric'});
+  const lastLabel = new Date(chronological[chronological.length-1].completedAt).toLocaleDateString('ar-DZ',{month:'short',day:'numeric'});
+  return `<div style="margin-top:10px;padding:10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;">
+    <div style="font-size:11.5px;font-weight:800;color:var(--muted);margin-bottom:4px;">📈 تطور الاستهلاك عبر آخر ${chronological.length} جولة</div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;direction:ltr;">
+      <line x1="${padL}" y1="${padT+chartH}" x2="${W-padR}" y2="${padT+chartH}" stroke="var(--line)" stroke-width="1"/>
+      ${bars}
+      <text x="${padL}" y="${H-4}" font-size="9" fill="var(--muted)">${escH(firstLabel)}</text>
+      <text x="${W-padR}" y="${H-4}" font-size="9" fill="var(--muted)" text-anchor="end">${escH(lastLabel)}</text>
+    </svg>
+    <div style="font-size:10px;color:var(--muted);margin-top:2px;">🔵 عادي &nbsp; 🔴 فيها إشارات</div>
+  </div>`;
+}
+function renderArchive(){renderPerformanceStats();renderNextRoundReminders();const el=document.getElementById('archiveList');if(!el)return;if(!roundArchives.length){el.innerHTML='<div class="empty-state"><div class="ico">🗂️</div><p>لا توجد جولات سابقة بعد.</p></div>';return;}el.innerHTML=roundArchives.map(a=>`<div class="archive-card"><div style="display:flex;justify-content:space-between;gap:8px"><div><div style="font-size:15px;font-weight:900;color:var(--blue)">${escH(a.route)}</div><div style="font-size:11px;color:var(--muted);margin-top:3px">${new Date(a.completedAt).toLocaleString('ar-DZ')}</div></div><span class="chip chip-done">${a.stats.done}/${a.stats.total} مرفوعة</span></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px"><div class="stat-box" style="padding:8px"><b>${a.stats.total}</b><div class="lbl">زبون</div></div><div class="stat-box" style="padding:8px"><b>${a.stats.consumption}</b><div class="lbl">م³</div></div><div class="stat-box" style="padding:8px"><b>${a.stats.anom}</b><div class="lbl">إشارات</div></div></div><div class="archive-actions"><button class="btn-prim" onclick="openArchivedReport('${a.id}')">📋 التقرير</button><button class="btn-ghost" onclick="restoreArchive('${a.id}')">♻️ استرجاع</button><button class="btn-ghost" style="color:var(--danger);border-color:#FFCDD2;" onclick="deleteArchivedRound('${a.id}')">🗑️ حذف</button></div></div>`).join('');}
 async function deleteArchivedRound(id){
   const a=roundArchives.find(x=>x.id===id); if(!a) return;
   if(!confirm(`حذف أرشيف الجولة "${a.route}" نهائياً؟ لا يمكن التراجع عن هذا.`)) return;
@@ -1621,6 +1741,16 @@ function renderMeterSerialDisplay(m){
     el.innerHTML = escH(m.meterSerial) + ' <span onclick="editMeterSerial()" style="cursor:pointer;color:var(--blue);">✏️</span>';
   } else {
     el.innerHTML = `<input id="serialQuickInput" type="text" placeholder="أدخله أول مرة" style="width:130px;font-family:'IBM Plex Mono',monospace;border:1px solid var(--line);border-radius:6px;padding:2px 6px;font-size:12px;" onblur="commitMeterSerial(this.value)">`;
+  }
+  const statusEl = document.getElementById('dMeterStatus');
+  if(statusEl){
+    if(m.meterStatus==='EM'){
+      statusEl.innerHTML = ' &nbsp;<span style="background:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:800;">⚙️ يعمل (EM)</span>';
+    } else if(m.meterStatus==='AR'){
+      statusEl.innerHTML = ' &nbsp;<span style="background:#FFEBEE;color:#C62828;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:800;">⛔ متوقف (AR)</span>';
+    } else {
+      statusEl.innerHTML = '';
+    }
   }
 }
 function editMeterSerial(){
@@ -1773,6 +1903,18 @@ function openMeter(id){
   document.getElementById('topBadge').textContent = '#'+m.meter;
   const customerNameEl = document.getElementById('dCustomerName');
   if(customerNameEl) customerNameEl.textContent = m.name || '—';
+  const sigBanner = document.getElementById('prevSignalBanner');
+  const sigBannerText = document.getElementById('prevSignalBannerText');
+  if(sigBanner && sigBannerText){
+    if(m.prevSignal && m.prevSignal.annot){
+      const label = annotLabel(m.prevSignal.annot);
+      const when = m.prevSignal.at ? new Date(m.prevSignal.at).toLocaleDateString('ar-DZ') : '';
+      sigBannerText.innerHTML = `⚠️ كانت لهذا الزبون إشارة سابقة (${when}): <b>${escH(label)}</b>${m.prevSignal.obs?` — ${escH(m.prevSignal.obs)}`:''}. هل تم إصلاحها؟`;
+      sigBanner.style.display = 'block';
+    } else {
+      sigBanner.style.display = 'none';
+    }
+  }
   fabEl.style.display='none';
   const rsp=document.getElementById('routeStatsPanel'); if(rsp) rsp.style.display='none';
   previewCons();
@@ -1848,6 +1990,28 @@ function calcADEBill(cons, subType){
   return Math.round(htBase + tva + revGest + revQual + revEco);
 }
 
+let preSaveEditTracker = {meterId:null, lastStableValue:null, timer:null};
+function trackPreSaveEdit(){
+  const m = meters.find(x=>x.id===currentMeterId);
+  if(!m) return;
+  if(preSaveEditTracker.meterId !== m.id){
+    // switched to a different meter -- start fresh, don't compare across customers
+    preSaveEditTracker = {meterId:m.id, lastStableValue:null, timer:null};
+  }
+  clearTimeout(preSaveEditTracker.timer);
+  preSaveEditTracker.timer = setTimeout(()=>{
+    const raw = document.getElementById('newIndexInput').value;
+    const val = parseFloat(raw);
+    if(isNaN(val)) return; // field emptied/incomplete -- nothing stable to compare yet
+    const prev = preSaveEditTracker.lastStableValue;
+    if(prev!=null && prev!==val){
+      logReportEdit(m, {type:'تعديل الرقم قبل الحفظ', before:prev, after:val});
+      saveMeters();
+    }
+    preSaveEditTracker.lastStableValue = val;
+  }, 1500);
+}
+
 function previewCons(){
   const m = meters.find(x=>x.id===currentMeterId);
   if(!m) return;
@@ -1856,6 +2020,7 @@ function previewCons(){
   const amt = calcADEBill(cons, m.subType);
   document.getElementById('previewCons').textContent = cons;
   document.getElementById('previewAmt').textContent = amt.toLocaleString('ar-DZ');
+  trackPreSaveEdit();
 }
 
 function openLowReadingModal(m, val){
@@ -1967,6 +2132,7 @@ async function saveReleve(){
   if(oldVal!=null && oldVal!=='' && !isNaN(parseFloat(oldVal)) && !isNaN(val) && parseFloat(oldVal)!==val){
     logReportEdit(m, {type:'تعديل القراءة', before:parseFloat(oldVal), after:val});
   }
+  if(preSaveEditTracker.meterId===m.id){ preSaveEditTracker.lastStableValue = val; clearTimeout(preSaveEditTracker.timer); }
   if(signatureDirty){ const sig=document.getElementById('signatureCanvas'); if(sig){ m.signatureData=sig.toDataURL('image/png'); signatureDirty=false; } }
   await saveMeters();
   renderAll();
@@ -2759,6 +2925,11 @@ function tryParseADEFixedWidth(lines){
       // -> 32 = average consumption). Used later to flag unusually high
       // readings (> 50% above this average) before the worker saves them.
       const avgConsumption = m ? parseInt(m[1],10) : null;
+      // m[2] is the meter's own operational status as recorded by ADE:
+      // EM = "en marche" (working), AR = "à l'arrêt" (stopped). Shown to
+      // the worker on the customer's page so they know before they even
+      // start reading whether ADE expects this meter to be running.
+      const meterStatus = m ? m[2].toUpperCase() : null;
       // ADE export: the serial is the SECOND 10-digit value beginning with 20
       // on the customer's record. Example: 2020241128 2025005433 -> 2025005433.
       // Some TXT files have no separator, so search the complete raw line.
@@ -2767,7 +2938,7 @@ function tryParseADEFixedWidth(lines){
       if(serials.length >= 2) meterSerial = serials[1];
       else if(serials.length === 1) meterSerial = serials[0];
       const address = [addr1, addr2].filter(Boolean).join('، ');
-      records.push({ name, meter: meterSeg, address, subType, phone:'', prevIndex, avgConsumption, meterSerial, adeRawLine: raw });
+      records.push({ name, meter: meterSeg, address, subType, phone:'', prevIndex, avgConsumption, meterStatus, meterSerial, adeRawLine: raw });
     }
   }
   if(total>0 && matched >= total*0.5) return records;
@@ -2796,6 +2967,7 @@ async function commitImport(records, statusEl, input, routeNum=''){
       }
       if(rec.adeRawLine && !existing.adeRawLine){ existing.adeRawLine = rec.adeRawLine; touched=true; }
       if(rec.avgConsumption!=null && existing.avgConsumption!==rec.avgConsumption){ existing.avgConsumption = rec.avgConsumption; touched=true; }
+      if(rec.meterStatus!=null && existing.meterStatus!==rec.meterStatus){ existing.meterStatus = rec.meterStatus; touched=true; }
       if(touched) updated++; else skipped++;
       return;
     }
@@ -2808,6 +2980,7 @@ async function commitImport(records, statusEl, input, routeNum=''){
       phone: rec.phone||'', nationalId: rec.nationalId||'',
       prevIndex: parseFloat(rec.prevIndex)||0,
       avgConsumption: rec.avgConsumption!=null?rec.avgConsumption:null,
+      meterStatus: rec.meterStatus!=null?rec.meterStatus:null,
       newIndex:null, consumption:0, amount:0,
       meterSerial:rec.meterSerial||'', status:'pending', annot:null, lowReadingReason:'', obs:'', hasPhoto:false, savedAt:null,
       lat:null, lng:null, locAccuracy:null,
@@ -2941,6 +3114,7 @@ async function finishImport(rows, statusEl, input){
       phone: rec.phone||'', nationalId: rec.nationalId||'',
       prevIndex: parseFloat(rec.prevIndex)||0,
       avgConsumption: rec.avgConsumption!=null?rec.avgConsumption:null,
+      meterStatus: rec.meterStatus!=null?rec.meterStatus:null,
       newIndex:null, consumption:0, amount:0,
       meterSerial: rec.meterSerial||'', status:'pending', annot:null, lowReadingReason:'', obs:'', hasPhoto:false, savedAt:null,
       lat:null, lng:null, locAccuracy:null
@@ -3027,7 +3201,7 @@ async function resetAdeStorageFolder(){
    'CI' = flagged as an empty/inaccessible dwelling (INH) — best-effort guess,
    only 'EM' is confidently verified against the samples; 'AR' and 'CI'/'II'
    should be checked against a real completed export before relying on them. */
-function padRightTo(s, len){ s=String(s??''); return s.length>=len ? s.substring(0,len) : s+' '.repeat(len-s.length); }
+function padRightTo(s, len){ s=String(s??''); return s.length>=len ? s : s+' '.repeat(len-s.length); }
 function buildAdeExportLine(m){
   const worker = settings.worker || '';
   const now = m.savedAt ? new Date(m.savedAt) : new Date();
@@ -3073,9 +3247,30 @@ function buildAdeExportLine(m){
     + '  '+dateStr+timeStr+padRightTo(worker,17)+padRightTo('unknown',10)+status2+val2;
   return padRightTo(line,256);
 }
+/* ====== EXPORT ORDER FOR THE .txt FILE ======
+   1) normal consumption, 2) over-average consumption, 3) zero/negative
+   consumption, 4) has a signal/anomaly, 5) not read yet (pending). Only
+   affects the .txt line order -- Excel and the report keep the original
+   customer order. */
+function exportSortCategory(m){
+  if(m.status==='pending') return 5;
+  if(m.status==='anom') return 4;
+  const cons = Number(m.consumption)||0;
+  if(cons<=0) return 3;
+  const importAvg = Number(m.avgConsumption);
+  if(!isNaN(importAvg) && importAvg>0 && cons>importAvg*1.3) return 2;
+  return 1;
+}
+function sortMetersForExport(list){
+  return list.map((m,i)=>({m,i})).sort((a,b)=>{
+    const c = exportSortCategory(a.m)-exportSortCategory(b.m);
+    return c!==0 ? c : a.i-b.i; // stable within each category
+  }).map(x=>x.m);
+}
+
 async function exportTXT(){
   if(!meters.length){ toast('لا توجد بيانات لتصديرها'); return; }
-  const lines = meters.map(buildAdeExportLine);
+  const lines = sortMetersForExport(meters).map(buildAdeExportLine);
   const blob = new Blob(['\uFEFF'+lines.join('\r\n')], {type:'text/plain;charset=utf-8'});
   await saveExportToCliente(blob, `${getRouteExportName()}.txt`);
 }
@@ -3128,6 +3323,92 @@ async function importLocationsFile(input){
     console.error('import locations error', err);
     statusEl.textContent = `❌ فشل الاستيراد: ${err?.message||err}`;
     toast('❌ فشل استيراد ملف المواقع');
+  }
+  input.value = '';
+}
+
+/* ====== SIGNALS EXPORT / IMPORT ======
+   Same carry-forward idea as locations, but for anomaly signals (leak,
+   broken meter, closed door...). A worker exports the signals they raised
+   this round; whoever does the NEXT round for the same route imports that
+   file, and each matching customer's screen shows a small banner: "had
+   this signal last time -- was it fixed?" so nothing reported gets
+   silently forgotten between rounds. */
+function annotLabel(code){
+  const found = ANNOTATIONS.find(a=>a.code===code);
+  return found ? found.label : code;
+}
+function dismissPrevSignalBanner(){
+  const m = meters.find(x=>x.id===currentMeterId);
+  const sigBanner = document.getElementById('prevSignalBanner');
+  if(sigBanner) sigBanner.style.display = 'none';
+  if(m){ delete m.prevSignal; saveMeters(); }
+}
+async function exportSignalsData(silent){
+  const withSignal = meters.filter(m=>m.status==='anom' && m.annot && m.annot!=='00');
+  const arCount = meters.filter(m=>m.meterStatus==='AR').length;
+  if(!withSignal.length && !arCount){ if(!silent) toast('لا توجد إشارات لتصديرها'); return; }
+  const payload = {
+    meta: { arCount, route: settings.routeNum||getRouteExportName(), exportedAt: Date.now() },
+    items: withSignal.map(m=>({meter:m.meter, annot:m.annot, obs:m.obs||'', at:m.savedAt||Date.now()}))
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json;charset=utf-8'});
+  await saveExportToCliente(blob, `اشارات_${getRouteExportName()}.json`);
+}
+
+let prevArComparison = null;
+async function loadPrevArComparison(){
+  try{ const r = await sg('prevArComparison'); prevArComparison = r?JSON.parse(r):null; }
+  catch(e){ prevArComparison = null; }
+}
+function renderPrevArComparison(){
+  const el = document.getElementById('rsPrevAr');
+  if(!el) return;
+  if(!prevArComparison){ el.textContent='—'; return; }
+  const diff = prevArComparison.diff;
+  const sign = diff>0 ? `+${diff}` : String(diff);
+  el.textContent = `${prevArComparison.current} (${sign})`;
+}
+
+async function importSignalsFile(input){
+  const file = input.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('importSigStatus');
+  statusEl.textContent = 'جارِ القراءة...';
+  try{
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const data = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.items) ? parsed.items : null);
+    if(!data) throw new Error('صيغة الملف غير صحيحة');
+
+    const byMeter = {};
+    data.forEach(e=>{ if(e && e.meter) byMeter[String(e.meter)] = e; });
+
+    let filled=0;
+    meters.forEach(m=>{
+      const entry = byMeter[String(m.meter)];
+      if(!entry || !entry.annot) return;
+      m.prevSignal = {annot: entry.annot, obs: entry.obs||'', at: entry.at||null};
+      filled++;
+    });
+
+    // AR (stopped-meter) count comparison, current triplet vs the imported
+    // (previous) triplet's file.
+    if(!Array.isArray(parsed) && parsed.meta && typeof parsed.meta.arCount==='number'){
+      const currentAr = meters.filter(m=>m.meterStatus==='AR').length;
+      prevArComparison = { previous: parsed.meta.arCount, current: currentAr, diff: currentAr-parsed.meta.arCount, at: Date.now() };
+      await safeSet('prevArComparison', JSON.stringify(prevArComparison));
+      renderPrevArComparison();
+    }
+
+    await saveMeters();
+    statusEl.textContent = `✅ تم استيراد الإشارات: ${filled} زبون عندو إشارة سابقة مسجّلة.`;
+    toast(`✅ تم استيراد ${filled} إشارة سابقة`);
+    renderAll();
+  }catch(err){
+    console.error('import signals error', err);
+    statusEl.textContent = `❌ فشل الاستيراد: ${err?.message||err}`;
+    toast('❌ فشل استيراد ملف الإشارات');
   }
   input.value = '';
 }
@@ -3203,6 +3484,20 @@ function buildLocationsReportHtml(){
   const script = ""
     + "const DATA=" + JSON.stringify(pins) + ";"
     + "function haversine(lat1,lng1,lat2,lng2){const R=6371000,toRad=x=>x*Math.PI/180;const dLat=toRad(lat2-lat1),dLng=toRad(lng2-lng1);const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));}"
+    + "function routeLength(order,startLat,startLng){let total=0,pl=startLat,pn=startLng;order.forEach(p=>{total+=haversine(pl,pn,p.lat,p.lng);pl=p.lat;pn=p.lng;});return total;}"
+    + "function twoOptImprove(order,startLat,startLng){"
+    + "  let improved=true, guard=0;"
+    + "  while(improved && guard<200){"
+    + "    improved=false; guard++;"
+    + "    for(let i=0;i<order.length-1;i++){"
+    + "      for(let j=i+1;j<order.length;j++){"
+    + "        const cand=order.slice(0,i).concat(order.slice(i,j+1).slice().reverse(),order.slice(j+1));"
+    + "        if(routeLength(cand,startLat,startLng) < routeLength(order,startLat,startLng) - 0.5){ order=cand; improved=true; }"
+    + "      }"
+    + "    }"
+    + "  }"
+    + "  return order;"
+    + "}"
     + "function popupHtml(p){const last=p.newIndex!=null?(p.newIndex+' (استهلاك '+p.consumption+' م³)'):'لم تُقرأ بعد';const rankLine=p._rank!=null?('<br>الترتيب المقترح: #'+p._rank):'';return '<div class=\"map-popup\"><b>'+p.name+'</b><br>رمز الزبون: '+p.meter+'<br>آخر قراءة: '+last+rankLine+'<br><a href=\"https://www.google.com/maps?q='+encodeURIComponent(p.lat+','+p.lng)+'\" target=\"_blank\">🧭 فتح الاتجاهات</a></div>';}"
     + "let map,markersLayer;"
     + "function initMap(){"
@@ -3246,15 +3541,18 @@ function buildLocationsReportHtml(){
     + "  out.textContent='📡 يتم تحديد موقعك لترتيب القائمة...';"
     + "  navigator.geolocation.getCurrentPosition(pos=>{"
     + "    let curLat=pos.coords.latitude, curLng=pos.coords.longitude;"
-    + "    const remaining=DATA.slice(); const ordered=[];"
+    + "    const remaining=DATA.slice(); let ordered=[];"
+    + "    const startLat=pos.coords.latitude, startLng=pos.coords.longitude;"
     + "    while(remaining.length){"
     + "      let bestIdx=0,bestDist=Infinity;"
     + "      remaining.forEach((p,i)=>{const d=haversine(curLat,curLng,p.lat,p.lng); if(d<bestDist){bestDist=d;bestIdx=i;}});"
-    + "      const next=remaining.splice(bestIdx,1)[0]; next._rank=ordered.length+1; ordered.push(next);"
+    + "      const next=remaining.splice(bestIdx,1)[0]; ordered.push(next);"
     + "      curLat=next.lat; curLng=next.lng;"
     + "    }"
+    + "    ordered=twoOptImprove(ordered,startLat,startLng);"
+    + "    ordered.forEach((p,i)=>{p._rank=i+1;});"
     + "    renderLocTable(ordered);"
-    + "    out.textContent='✅ تم ترتيب '+ordered.length+' موقعاً حسب الأقرب لموقعك الحالي — شاهد عمود «الترتيب» في القائمة أسفله';"
+    + "    out.textContent='✅ تم ترتيب '+ordered.length+' موقعاً بأقصر مسار تقديري من موقعك الحالي (مع تحسين إضافي لتقليل التقاطعات) — شاهد عمود «الترتيب» في القائمة أسفله';"
     + "  }, (err)=>{"
     + "    let msg='❌ تعذر تحديد موقعك.';"
     + "    if(err && err.code===1) msg='❌ تم رفض إذن الموقع. فعّل صلاحية الموقع لهذا المتصفح من إعدادات الجهاز.';"
@@ -3298,7 +3596,7 @@ function buildRouteReportHtml(){
   const editRows = meters.filter(m=>m.reportEdits && m.reportEdits.length).map(m=>{
     const items = m.reportEdits.slice(-10).map(e=>{
       const when = new Date(e.at).toLocaleString('ar-DZ');
-      if(e.type==='تعديل القراءة') return `${when} — تعديل القراءة من ${e.before} إلى ${e.after}`;
+      if(e.type==='تعديل القراءة' || e.type==='تعديل الرقم قبل الحفظ') return `${when} — ${e.type} من ${e.before} إلى ${e.after}`;
       return `${when} — ${e.type}${e.value!=null?` (القراءة: ${e.value})`:''}`;
     }).join('<br>');
     return `<tr><td>${escH(m.meter)}</td><td>${escH(m.name)}</td><td style="text-align:right;">${items}</td></tr>`;
@@ -3350,6 +3648,7 @@ async function exportCompleteRound(){
   // exportResultsZip already contains the TXT, report, images and Excel. Save a standalone TXT too.
   await exportTXT();
   await exportLocationsData(true);
+  await exportSignalsData(true);
   toast(`✅ تم تصدير الجولة كاملة: ${getRouteExportName()}`);
 }
 function startExportCompleteRound(){
@@ -3397,7 +3696,7 @@ async function buildRouteZipBase64(){
   if(typeof XLSX==='undefined'){ toast('❌ مكتبة Excel غير متوفرة؛ تحقق من الاتصال بالإنترنت'); return null; }
   toast('1/4 تجهيز Excel...');const rows=meters.map(m=>({'رمز الزبون':m.meter,'الرقم التسلسلي للعداد':m.meterSerial||'','الاسم':m.name,'العنوان':m.address||'','نوع المشترك':m.subType||'','الهاتف':m.phone||'','رقم التعريف الوطني':m.nationalId||'','القراءة السابقة':m.prevIndex,'القراءة الجديدة':m.newIndex!=null?m.newIndex:'','الاستهلاك (م³)':m.consumption||'','المبلغ':m.amount||'','الحالة':m.status==='done'?'مرفوعة':(m.status==='anom'?'إشارة':'معلّقة'),'كود الإشارات':m.annot||'','سبب القراءة الأقل/المساوية':m.lowReadingReason||'','الملاحظة':m.obs||'','لديه صورة':m.hasPhoto?'نعم':'لا','خط العرض':m.lat||'','خط الطول':m.lng||'','رابط الخريطة':(m.lat&&m.lng)?`https://www.google.com/maps?q=${m.lat},${m.lng}`:'','تاريخ الرفع':m.savedAt?new Date(m.savedAt).toLocaleString('ar'):''}));
   const ws=XLSX.utils.json_to_sheet(rows);const headers=Object.keys(rows[0]||{});ws['!cols']=headers.map(h=>{let ml=String(h).length;for(const r of rows)ml=Math.max(ml,String(r[h]??'').length);return{wch:Math.min(55,Math.max(10,ml+2))};});const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'القراءات');const xlsxOut=XLSX.write(wb,{type:'array',bookType:'xlsx'});const zip=new JSZip(),route=getRouteExportName();
-  const lines=meters.map(buildAdeExportLine);zip.file(`${route}.txt`,'\uFEFF'+lines.join('\r\n'));zip.file('client.xlsx',xlsxOut);
+  const lines=sortMetersForExport(meters).map(buildAdeExportLine);zip.file(`${route}.txt`,'\uFEFF'+lines.join('\r\n'));zip.file('client.xlsx',xlsxOut);
   toast('2/4 إضافة الصور...');const photos=zip.folder('الصور');let photoCount=0;for(const m of meters){if(!m.hasPhoto)continue;try{const d=await Promise.race([sg('photo:'+m.id),new Promise(r=>setTimeout(()=>r(null),5000))]);if(d&&d.includes(',')){photos.file(`${m.meter||m.id}.jpg`,d.split(',')[1],{base64:true});photoCount++;}}catch(e){}}
   toast('3/4 إضافة المواقع والتقرير...');zip.file('المواقع.html',buildLocationsReportHtml());zip.file('تقرير الجولة.html',buildRouteReportHtml());
   toast('4/4 ضغط الملف...');const zipBase64=await zip.generateAsync({type:'base64',compression:'DEFLATE',compressionOptions:{level:6},streamFiles:true},meta=>{if(meta&&meta.percent)toast(`4/4 ضغط الملف ${Math.round(meta.percent)}%...`);});
@@ -3446,13 +3745,18 @@ async function shareRouteZip(){
 async function autoBackupIfNeeded(){
   try{
     const raw = await sg('autoBackups');
-    let backups = raw ? JSON.parse(raw) : [];
+    let backups = [];
+    if(raw){
+      try{ backups = JSON.parse(raw); if(!Array.isArray(backups)) backups=[]; }
+      catch(parseErr){ console.warn('autoBackupIfNeeded: stored data was corrupted, resetting', parseErr); backups=[]; }
+    }
     const today = new Date().toISOString().slice(0,10);
-    if(!meters.length){ loadAutoBackupsList(); return; }
-    if(backups.length && backups[0].date===today){ loadAutoBackupsList(); return; }
-    backups.unshift({date:today, at:Date.now(), route:settings.routeNum, meters:JSON.parse(JSON.stringify(meters)), settings:JSON.parse(JSON.stringify(settings))});
-    if(backups.length>7) backups=backups.slice(0,7);
-    await ss('autoBackups', JSON.stringify(backups));
+    if(meters.length && (!backups.length || backups[0].date!==today)){
+      backups.unshift({date:today, at:Date.now(), route:settings.routeNum, meters:JSON.parse(JSON.stringify(meters)), settings:JSON.parse(JSON.stringify(settings))});
+      if(backups.length>7) backups=backups.slice(0,7);
+      const ok = await safeSet('autoBackups', JSON.stringify(backups));
+      if(!ok) console.warn('autoBackupIfNeeded: failed to persist backup (storage full?)');
+    }
   }catch(e){ console.warn('autoBackupIfNeeded failed', e); }
   loadAutoBackupsList();
 }
