@@ -39,6 +39,19 @@ jobs:
       - name: Add Android
         run: npx cap add android
 
+      - name: Set target/compile SDK to 36 (Google Play requirement from Aug 31, 2026)
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path("android/variables.gradle")
+          s = p.read_text()
+          s = re.sub(r"targetSdkVersion\s*=\s*\d+", "targetSdkVersion = 36", s)
+          s = re.sub(r"compileSdkVersion\s*=\s*\d+", "compileSdkVersion = 36", s)
+          p.write_text(s)
+          PY
+
       - name: Add custom AndroidPublicFile plugin
         run: |
           PKG_DIR="android/app/src/main/java/com/saidbadji/meterreading"
