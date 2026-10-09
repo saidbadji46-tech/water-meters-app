@@ -6,6 +6,15 @@ A field app for water meter readers. It loads a customer round from the utility'
 
 The interface is in Arabic (right to left). It installs on a phone as a PWA and is also packaged as an Android app with Capacitor.
 
+## Try it with sample data
+
+You do not need ADE data to test the app. The file `sample-data/A01T3999.TXT` is a round in the same format as the utility's export files. It has 10 fictional customers.
+
+1. Open the [live app](https://saidbadji46-tech.github.io/water-meters-app/).
+2. Open the management tab (إدارة) and find the section "استيراد قائمة الزبائن" (import customer list).
+3. Choose `A01T3999.TXT` and import it.
+4. Open a customer, enter a new reading, and save it.
+
 ## Why it exists
 
 A reader works through a round of customers from a fixed-column text export. In the field the reader has to enter the new index, check it against the previous one, record where the meter is, and hand the round back in a format the office can load. This app does that on one screen per customer.
